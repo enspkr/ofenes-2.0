@@ -8,85 +8,68 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Tuning constants for WebSocket connections.
-// These are best-practice values from the gorilla/websocket examples.
+// Tuning constants — configurable via constants for clarity.
 const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer.
-	// If no pong arrives within this window, we assume the client is dead.
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait
-	// so that a pong can arrive before we time out.
-	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer (bytes).
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = (pongWait * 9) / 10
 	maxMessageSize = 4096
 )
 
-// upgrader upgrades an HTTP connection to a WebSocket connection.
-// CheckOrigin returns true for all origins during development.
-// TODO: restrict origins in production.
+// upgrader handles the HTTP → WebSocket protocol upgrade.
+// CheckOrigin is permissive in development.
+// TODO: Read allowed origins from config in production.
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins in dev
+		return true
 	},
 }
 
-// Client is a middleman between the WebSocket connection and the Hub.
-//
-// Each Client spawns two goroutines:
-//   - readPump:  reads messages FROM the WebSocket and sends them to the Hub.
-//   - writePump: reads messages FROM the Hub (via Send channel) and writes them
-//     TO the WebSocket.
-//
-// This separation means the Hub never touches the raw connection directly.
+// Client represents a single WebSocket connection.
+// Each client is associated with a user (via UserID) and manages
+// two goroutines: readPump and writePump.
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-
-	// Buffered channel of outbound messages.
-	// The Hub writes into this; writePump drains it.
-	Send chan []byte
+	hub    *Hub
+	conn   *websocket.Conn
+	Send   chan []byte
+	UserID string // Identifies who this connection belongs to
 }
 
-// ServeWs handles WebSocket requests from the peer.
-// This is the HTTP handler you mount on your router:
+// ServeWs handles the WebSocket upgrade and registers the client.
 //
-//	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-//	    ws.ServeWs(hub, w, r)
-//	})
+// The userID is extracted from the query parameter "userId".
+// In production, this should come from the JWT token instead.
+// TODO: Extract userID from JWT via middleware context.
 func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	// Extract user identity from query params (or future: JWT)
+	userID := r.URL.Query().Get("userId")
+	if userID == "" {
+		userID = "anonymous"
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("ws upgrade error: %v", err)
+		log.Printf("ws: upgrade error: %v", err)
 		return
 	}
 
 	client := &Client{
-		hub:  hub,
-		conn: conn,
-		Send: make(chan []byte, 256), // 256-message buffer
+		hub:    hub,
+		conn:   conn,
+		Send:   make(chan []byte, 256),
+		UserID: userID,
 	}
 
-	// Register this client with the Hub.
 	client.hub.Register <- client
 
-	// Start the read and write pumps in separate goroutines.
-	// These goroutines will exit when the connection closes.
 	go client.writePump()
 	go client.readPump()
 }
 
-// readPump pumps messages from the WebSocket connection to the Hub.
-//
-// A goroutine running readPump is started for each connection. The
-// application ensures that there is at most one reader on a connection
-// by executing all reads from this goroutine.
+// readPump reads messages from the WebSocket and forwards them to the Hub.
+// One readPump goroutine per connection — guarantees single reader.
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.Unregister <- c
@@ -104,20 +87,16 @@ func (c *Client) readPump() {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("ws read error: %v", err)
+				log.Printf("ws: read error (user=%s): %v", c.UserID, err)
 			}
 			break
 		}
-		// Forward the message to the Hub for broadcasting.
 		c.hub.Broadcast <- message
 	}
 }
 
-// writePump pumps messages from the Hub to the WebSocket connection.
-//
-// A goroutine running writePump is started for each connection. The
-// application ensures that there is at most one writer on a connection
-// by executing all writes from this goroutine.
+// writePump writes messages from the Hub to the WebSocket.
+// One writePump goroutine per connection — guarantees single writer.
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -130,7 +109,6 @@ func (c *Client) writePump() {
 		case message, ok := <-c.Send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// The Hub closed the channel — send a close frame.
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -141,7 +119,7 @@ func (c *Client) writePump() {
 			}
 			w.Write(message)
 
-			// Drain any queued messages into the same write frame for efficiency.
+			// Batch queued messages for efficiency
 			n := len(c.Send)
 			for i := 0; i < n; i++ {
 				w.Write([]byte{'\n'})
@@ -153,7 +131,6 @@ func (c *Client) writePump() {
 			}
 
 		case <-ticker.C:
-			// Send a ping to keep the connection alive.
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return

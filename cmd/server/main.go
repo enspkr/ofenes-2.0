@@ -1,36 +1,42 @@
 // Package main is the entry point for the ofenes backend server.
+//
+// This file is pure wiring: load config → create dependencies → start server.
+// All logic lives in internal/ packages.
 package main
 
 import (
 	"log"
 	"net/http"
 
-	"ofenes/internal/handler"
+	"ofenes/internal/app"
+	"ofenes/internal/config"
+	"ofenes/internal/repository"
+	"ofenes/internal/router"
 	"ofenes/internal/ws"
 )
 
 func main() {
-	// --- WebSocket Hub ---
-	// Create the Hub and start its event loop in a background goroutine.
-	// The Hub must be running before any client can connect.
+	// --- Load Configuration ---
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
+
+	// --- Create Dependencies ---
+	userRepo := repository.NewMemoryUserRepo()
 	hub := ws.NewHub()
 	go hub.Run()
 
-	// --- Routes ---
-	mux := http.NewServeMux()
+	// --- Create Application Container ---
+	application := app.New(cfg, userRepo, hub)
 
-	// REST endpoints
-	mux.HandleFunc("GET /api/hello", handler.HelloHandler)
-
-	// WebSocket endpoint — upgrades HTTP to WS and registers the client with the Hub.
-	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		ws.ServeWs(hub, w, r)
-	})
+	// --- Create Router (wires routes + middleware) ---
+	handler := router.New(application)
 
 	// --- Start Server ---
-	addr := ":8080"
+	addr := ":" + cfg.Port
 	log.Printf("🚀 Backend server starting on http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }
