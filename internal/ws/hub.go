@@ -1,32 +1,34 @@
 // Package ws implements WebSocket connection management.
 //
-// Architecture Deep-Dive:
+// Architecture:
 //
-// The Hub is a central coordinator that runs as a single long-lived goroutine.
-// It uses three channels to safely manage concurrent access to the client map
-// WITHOUT needing a mutex (channel-based synchronization is idiomatic Go).
+//	Hub goroutine (single owner of clients map)
+//	  ┌──────────────────────────────────────────┐
+//	  │  select {                                │
+//	  │    case client := <-register:            │  ← new connection joins
+//	  │    case client := <-unregister:          │  ← connection leaves
+//	  │    case message := <-broadcast:          │  ← fan-out to all clients
+//	  │  }                                       │
+//	  └──────────────────────────────────────────┘
 //
-//   Hub goroutine (single)
-//     ┌─────────────────────────────────────┐
-//     │  select {                           │
-//     │    case client := <-register:       │  ← new connection joins
-//     │    case client := <-unregister:     │  ← connection leaves
-//     │    case message := <-broadcast:     │  ← fan-out to all clients
-//     │  }                                  │
-//     └─────────────────────────────────────┘
-//
-// Each Client has its own writePump goroutine that reads from a buffered
-// 'send' channel. The Hub writes into those channels; the writePump drains
-// them onto the actual WebSocket connection. This decouples broadcast speed
-// from individual connection write speed.
+// The Hub is the ONLY goroutine that touches the clients map.
+// All synchronization is done through channels — no mutexes needed.
 package ws
 
-// Hub maintains the set of active clients and broadcasts messages.
+import (
+	"encoding/json"
+	"log"
+	"time"
+
+	"ofenes/internal/models"
+)
+
+// Hub maintains the set of active clients and routes messages.
 type Hub struct {
-	// Registered clients. The map value is unused (set semantics).
+	// Registered clients.
 	clients map[*Client]bool
 
-	// Inbound messages from clients to broadcast.
+	// Inbound messages from clients.
 	Broadcast chan []byte
 
 	// Register requests from new clients.
@@ -46,37 +48,89 @@ func NewHub() *Hub {
 	}
 }
 
-// Run starts the Hub's main event loop. Call this in a goroutine:
-//
-//	hub := ws.NewHub()
-//	go hub.Run()
-//
-// This is the ONLY goroutine that reads/writes the clients map,
-// so no mutex is needed — all synchronization happens through channels.
+// Run starts the Hub's main event loop. Call this in a goroutine.
 func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.Register:
 			h.clients[client] = true
+			log.Printf("ws: client connected (user=%s, total=%d)", client.UserID, len(h.clients))
+
+			// Notify all clients about the new connection
+			h.broadcastSystemMessage("user_joined", client.UserID)
 
 		case client := <-h.Unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.Send)
+				log.Printf("ws: client disconnected (user=%s, total=%d)", client.UserID, len(h.clients))
+
+				h.broadcastSystemMessage("user_left", client.UserID)
 			}
 
 		case message := <-h.Broadcast:
-			for client := range h.clients {
-				select {
-				case client.Send <- message:
-					// Message queued successfully.
-				default:
-					// Client's send buffer is full — assume it's dead.
-					// Close the channel and remove the client.
-					close(client.Send)
-					delete(h.clients, client)
-				}
-			}
+			h.routeMessage(message)
 		}
 	}
+}
+
+// routeMessage parses incoming JSON and routes by message type.
+// This is the typed routing layer — extend it as you add features.
+func (h *Hub) routeMessage(raw []byte) {
+	var msg models.Message
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		log.Printf("ws: invalid message format: %v", err)
+		return
+	}
+
+	switch msg.Type {
+	case models.MsgTypeChat:
+		// Chat messages: broadcast to all clients
+		h.broadcastToAll(raw)
+
+	case models.MsgTypeVideoSync:
+		// Video sync: broadcast to all clients
+		h.broadcastToAll(raw)
+
+	case models.MsgTypeAdmin:
+		// Admin messages: only broadcast to admins (future: check role)
+		h.broadcastToAll(raw)
+
+	default:
+		log.Printf("ws: unknown message type: %s", msg.Type)
+		h.broadcastToAll(raw) // fallback: broadcast anyway
+	}
+}
+
+// broadcastToAll sends a message to every connected client.
+func (h *Hub) broadcastToAll(message []byte) {
+	for client := range h.clients {
+		select {
+		case client.Send <- message:
+		default:
+			close(client.Send)
+			delete(h.clients, client)
+		}
+	}
+}
+
+// broadcastSystemMessage creates and sends a system message to all clients.
+func (h *Hub) broadcastSystemMessage(event, userID string) {
+	msg := models.Message{
+		Type:      models.MsgTypeSystem,
+		Sender:    "system",
+		Payload:   event,
+		Timestamp: time.Now(),
+	}
+
+	// Include the user ID in the payload for user_joined/user_left events
+	msg.Payload = `{"event":"` + event + `","userId":"` + userID + `"}`
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("ws: failed to marshal system message: %v", err)
+		return
+	}
+
+	h.broadcastToAll(data)
 }
