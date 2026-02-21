@@ -17,7 +17,7 @@ export default defineConfig({
             },
             // Forward WebSocket connections to the Go backend
             '/ws': {
-                target: 'ws://localhost:8080',
+                target: 'http://localhost:8080',
                 ws: true,
             },
         },

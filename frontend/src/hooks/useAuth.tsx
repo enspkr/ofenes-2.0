@@ -1,19 +1,31 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, createContext, useContext } from 'react'
+import type { ReactNode } from 'react'
 import type { User, AuthResponse, ApiError } from '../types/models'
 
 const TOKEN_KEY = 'ofenes_token'
 const USER_KEY = 'ofenes_user'
 
+/** Auth state and methods provided by the context */
+interface AuthContextValue {
+    user: User | null
+    token: string | null
+    error: string | null
+    loading: boolean
+    isAuthenticated: boolean
+    register: (username: string, password: string) => Promise<boolean>
+    login: (username: string, password: string) => Promise<boolean>
+    logout: () => void
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+
 /**
- * useAuth — custom hook for authentication state management.
+ * AuthProvider — wraps the app and provides a SINGLE auth state to all children.
  *
- * Provides: login, register, logout, and current user/token state.
- * Persists auth state in localStorage so it survives page refreshes.
- *
- * Usage:
- *   const { user, token, login, register, logout, isAuthenticated, error } = useAuth()
+ * This prevents the bug where multiple useAuth() calls create independent
+ * state instances that fall out of sync.
  */
-export function useAuth() {
+export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(() => {
         const stored = localStorage.getItem(USER_KEY)
         return stored ? (JSON.parse(stored) as User) : null
@@ -42,8 +54,6 @@ export function useAuth() {
             localStorage.removeItem(USER_KEY)
         }
     }, [user])
-
-    // --- Auth API calls ---
 
     const handleAuthResponse = useCallback((data: AuthResponse) => {
         setToken(data.token)
@@ -115,14 +125,33 @@ export function useAuth() {
         localStorage.removeItem(USER_KEY)
     }, [])
 
-    return {
+    return (
+        <AuthContext.Provider
+      value= {{
         user,
-        token,
-        error,
-        loading,
-        isAuthenticated: !!token && !!user,
-        register,
-        login,
-        logout,
+            token,
+            error,
+            loading,
+            isAuthenticated: !!token && !!user,
+                register,
+                login,
+                logout,
+      }
+}
+    >
+    { children }
+    </AuthContext.Provider>
+  )
+}
+
+/**
+ * useAuth — hook to access the shared auth context.
+ * Must be used inside an AuthProvider.
+ */
+export function useAuth(): AuthContextValue {
+    const ctx = useContext(AuthContext)
+    if (!ctx) {
+        throw new Error('useAuth must be used within an AuthProvider')
     }
+    return ctx
 }
