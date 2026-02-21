@@ -28,9 +28,9 @@ func New(application *app.App) http.Handler {
 	authMw := middleware.Auth(application.Config.JWTSecret)
 	mux.Handle("GET /api/me", authMw(http.HandlerFunc(h.Me)))
 
-	// --- WebSocket ---
+	// --- WebSocket (JWT authenticated) ---
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		ws.ServeWs(application.Hub, w, r)
+		ws.ServeWs(application.Hub, application.Config.JWTSecret, w, r)
 	})
 
 	// --- Apply global middleware stack ---
