@@ -5,13 +5,13 @@ interface ChatProps {
     messages: Message[]
     onSend: (type: Message['type'], payload: string) => void
     readyState: string
-    currentUserId: string
+    currentUsername: string
 }
 
 /**
  * Chat — real-time chat panel with message list, input, and system notifications.
  */
-export function Chat({ messages, onSend, readyState, currentUserId }: ChatProps) {
+export function Chat({ messages, onSend, readyState, currentUsername }: ChatProps) {
     const [input, setInput] = useState('')
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -38,8 +38,8 @@ export function Chat({ messages, onSend, readyState, currentUserId }: ChatProps)
                 <div className="flex items-center gap-2">
                     <span
                         className={`w-2.5 h-2.5 rounded-full ${isConnected
-                                ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50'
-                                : 'bg-red-400 shadow-sm shadow-red-400/50'
+                            ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50'
+                            : 'bg-red-400 shadow-sm shadow-red-400/50'
                             }`}
                     />
                     <span className="text-xs font-mono text-slate-500 uppercase">
@@ -60,7 +60,7 @@ export function Chat({ messages, onSend, readyState, currentUserId }: ChatProps)
                     if (msg.type === 'system') {
                         return <SystemMessage key={i} msg={msg} />
                     }
-                    const isOwn = msg.sender === currentUserId
+                    const isOwn = msg.sender === currentUsername
                     return <ChatBubble key={i} msg={msg} isOwn={isOwn} />
                 })}
 
@@ -106,8 +106,8 @@ function ChatBubble({ msg, isOwn }: { msg: Message; isOwn: boolean }) {
             )}
             <div
                 className={`max-w-[80%] px-3.5 py-2 rounded-2xl text-sm ${isOwn
-                        ? 'bg-cyan-600/80 text-white rounded-br-md'
-                        : 'bg-slate-700/80 text-slate-200 rounded-bl-md'
+                    ? 'bg-cyan-600/80 text-white rounded-br-md'
+                    : 'bg-slate-700/80 text-slate-200 rounded-bl-md'
                     }`}
             >
                 {msg.payload}

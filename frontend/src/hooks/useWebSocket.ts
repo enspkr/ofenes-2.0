@@ -13,7 +13,6 @@ interface UseWebSocketOptions {
     /** JWT token — required for authenticated connections */
     token: string | null
     /** User info for outgoing messages */
-    userId: string
     username: string
 }
 
@@ -26,12 +25,10 @@ interface UseWebSocketOptions {
  *
  * Usage:
  *   const { messages, sendMessage, readyState } = useWebSocket({
- *     token, userId: user.id, username: user.username
+ *     token, username: user.username
  *   })
  */
-export function useWebSocket({ token, userId, username: _username }: UseWebSocketOptions) {
-    // _username is available for future use (e.g., display in outgoing messages)
-    void _username
+export function useWebSocket({ token, username }: UseWebSocketOptions) {
     const [messages, setMessages] = useState<Message[]>([])
     const [readyState, setReadyState] = useState<ReadyState>('closed')
 
@@ -113,13 +110,13 @@ export function useWebSocket({ token, userId, username: _username }: UseWebSocke
 
         const msg: Message = {
             type,
-            sender: userId,
+            sender: username,
             payload,
             timestamp: new Date().toISOString(),
         }
 
         wsRef.current.send(JSON.stringify(msg))
-    }, [userId])
+    }, [username])
 
     return {
         messages,

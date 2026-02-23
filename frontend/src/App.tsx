@@ -8,7 +8,6 @@ function Dashboard() {
 
     const { messages, sendMessage, readyState } = useWebSocket({
         token,
-        userId: user?.id ?? '',
         username: user?.username ?? '',
     })
 
@@ -46,7 +45,7 @@ function Dashboard() {
                         messages={messages}
                         onSend={sendMessage}
                         readyState={readyState}
-                        currentUserId={user?.id ?? ''}
+                        currentUsername={user?.username ?? ''}
                     />
                 </div>
 
@@ -64,8 +63,8 @@ function Dashboard() {
                                 <span
                                     key={item}
                                     className={`px-3 py-1 text-xs font-mono rounded-full border ${item.includes('next')
-                                            ? 'text-amber-400 border-amber-500/30 bg-amber-500/10'
-                                            : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+                                        ? 'text-amber-400 border-amber-500/30 bg-amber-500/10'
+                                        : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
                                         }`}
                                 >
                                     {item}
