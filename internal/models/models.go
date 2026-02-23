@@ -38,6 +38,8 @@ const (
 	MsgTypeChat      = "chat"
 	MsgTypeSystem    = "system"
 	MsgTypeVideoSync = "video_sync"
+	MsgTypeWebRTC    = "webrtc"
+	MsgTypeUserList  = "user_list"
 	MsgTypeAdmin     = "admin"
 )
 

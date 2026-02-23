@@ -8,7 +8,7 @@ export interface User {
 }
 
 export interface Message {
-    type: 'chat' | 'system' | 'video_sync' | 'admin'
+    type: 'chat' | 'system' | 'video_sync' | 'webrtc' | 'user_list' | 'admin'
     sender: string
     payload: string
     timestamp: string

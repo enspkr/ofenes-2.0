@@ -1,18 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Message } from '../types/models'
 
-/** WebSocket ready states matching the browser's WebSocket.readyState */
 export type ReadyState = 'connecting' | 'open' | 'closing' | 'closed'
 
-/** Reconnect config */
 const INITIAL_RETRY_MS = 1000
 const MAX_RETRY_MS = 30000
 const RETRY_MULTIPLIER = 2
 
 interface UseWebSocketOptions {
-    /** JWT token — required for authenticated connections */
     token: string | null
-    /** User info for outgoing messages */
     username: string
 }
 
@@ -22,7 +18,7 @@ interface UseWebSocketOptions {
  * - Authenticates via JWT token in the query string
  * - Auto-reconnects with exponential backoff on disconnect
  * - Handles React StrictMode double-mount (debounces connection)
- * - Provides typed sendMessage() and message history
+ * - Provides typed sendMessage() and raw sendDirect() for WebRTC signaling
  */
 export function useWebSocket({ token, username }: UseWebSocketOptions) {
     const [messages, setMessages] = useState<Message[]>([])
@@ -37,13 +33,11 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
     const connect = useCallback(() => {
         if (!token || unmounted.current) return
 
-        // Close any existing connection first
         if (wsRef.current) {
             wsRef.current.close(1000, 'reconnecting')
             wsRef.current = null
         }
 
-        // Build WS URL with JWT token
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
 
@@ -53,7 +47,7 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
         ws.onopen = () => {
             if (unmounted.current) return
             setReadyState('open')
-            retryMs.current = INITIAL_RETRY_MS // Reset backoff on successful connect
+            retryMs.current = INITIAL_RETRY_MS
             console.log('[ws] connected')
         }
 
@@ -72,7 +66,6 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
             setReadyState('closed')
             console.log(`[ws] disconnected (code=${event.code})`)
 
-            // Auto-reconnect with exponential backoff
             retryTimeout.current = setTimeout(() => {
                 if (unmounted.current) return
                 console.log(`[ws] reconnecting in ${retryMs.current}ms...`)
@@ -87,9 +80,6 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
         }
     }, [token])
 
-    // Connect on mount / token change.
-    // Uses a small debounce to handle React StrictMode's double-mount:
-    //   Mount 1 → schedule connect → Cleanup → cancel → Mount 2 → schedule connect → fires once
     useEffect(() => {
         unmounted.current = false
         clearTimeout(connectTimeout.current)
@@ -107,10 +97,31 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
     }, [connect])
 
     /**
-     * Send a typed message through the WebSocket.
-     * The message is JSON-serialized to match Go's models.Message struct.
+     * Send a typed Message through the WebSocket.
+     * Wraps the payload in the standard Message struct format.
      */
     const sendMessage = useCallback((type: Message['type'], payload: string) => {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            console.warn('[ws] cannot send — not connected')
+            return
+        }
+
+        const msg: Message = {
+            type,
+            sender: username,
+            payload,
+            timestamp: new Date().toISOString(),
+        }
+
+        wsRef.current.send(JSON.stringify(msg))
+    }, [username])
+
+    /**
+     * Send a raw JSON string directly through the WebSocket.
+     * Used for WebRTC signaling where we need a custom payload structure
+     * but still need the Hub to parse the Message envelope.
+     */
+    const sendDirect = useCallback((type: Message['type'], payload: string) => {
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
             console.warn('[ws] cannot send — not connected')
             return
@@ -129,6 +140,7 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
     return {
         messages,
         sendMessage,
+        sendDirect,
         readyState,
         clearMessages: () => setMessages([]),
     }

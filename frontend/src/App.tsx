@@ -1,25 +1,26 @@
 import { useAuth } from './hooks/useAuth'
 import { useWebSocket } from './hooks/useWebSocket'
-import { useVideoSync } from './hooks/useVideoSync'
+import { useWebRTC } from './hooks/useWebRTC'
 import { Login } from './components/Login'
 import { Chat } from './components/Chat'
-import { VideoPlayer } from './components/VideoPlayer'
+import { MediaPanel } from './components/MediaPanel'
 
 function Dashboard() {
     const { user, token, logout } = useAuth()
 
-    const { messages, sendMessage, readyState } = useWebSocket({
+    const { messages, sendMessage, sendDirect, readyState } = useWebSocket({
         token,
         username: user?.username ?? '',
     })
 
-    const { lastSyncEvent, currentVideoState, syncPlay, syncPause, syncSeek, syncLoad } = useVideoSync({
-        messages,
-        sendMessage,
-        username: user?.username ?? '',
-    })
-
     const isConnected = readyState === 'open'
+
+    const webrtc = useWebRTC({
+        messages,
+        sendDirect,
+        username: user?.username ?? '',
+        isConnected,
+    })
 
     return (
         <div className="h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col">
@@ -59,16 +60,23 @@ function Dashboard() {
                     />
                 </div>
 
-                {/* Right: Video Player */}
+                {/* Right: Media Panel */}
                 <div className="flex-1 flex flex-col min-w-0">
-                    <VideoPlayer
-                        lastSyncEvent={lastSyncEvent}
-                        currentVideoState={currentVideoState}
-                        onPlay={syncPlay}
-                        onPause={syncPause}
-                        onSeek={syncSeek}
-                        onLoad={syncLoad}
+                    <MediaPanel
+                        localStream={webrtc.localStream}
+                        remoteStreams={webrtc.remoteStreams}
+                        isInCall={webrtc.isInCall}
+                        isMicOn={webrtc.isMicOn}
+                        isCameraOn={webrtc.isCameraOn}
+                        isScreenSharing={webrtc.isScreenSharing}
+                        connectedUsers={webrtc.connectedUsers}
+                        currentUsername={user?.username ?? ''}
                         isConnected={isConnected}
+                        onJoinCall={webrtc.joinCall}
+                        onLeaveCall={webrtc.leaveCall}
+                        onToggleMic={webrtc.toggleMic}
+                        onToggleCamera={webrtc.toggleCamera}
+                        onToggleScreenShare={webrtc.toggleScreenShare}
                     />
                 </div>
             </main>

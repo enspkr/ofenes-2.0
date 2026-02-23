@@ -49,12 +49,18 @@ func (h *Hub) Run() {
 				}
 			}
 
+			// Broadcast updated user list so peers know who to connect to
+			h.broadcastUserList()
+
 		case client := <-h.Unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.Send)
 				log.Printf("ws: client disconnected (user=%s, total=%d)", client.Username, len(h.clients))
 				h.broadcastSystemMessage("user_left", client.UserID, client.Username)
+
+				// Broadcast updated user list after disconnect
+				h.broadcastUserList()
 			}
 
 		case message := <-h.Broadcast:
@@ -76,9 +82,12 @@ func (h *Hub) routeMessage(raw []byte) {
 		h.broadcastToAll(raw)
 
 	case models.MsgTypeVideoSync:
-		// Store latest video state for late joiners
 		h.lastVideoState = raw
 		h.broadcastToAll(raw)
+
+	case models.MsgTypeWebRTC:
+		// WebRTC signaling: forward to a specific target user
+		h.routeWebRTCMessage(msg)
 
 	case models.MsgTypeAdmin:
 		h.broadcastToAll(raw)
@@ -87,6 +96,73 @@ func (h *Hub) routeMessage(raw []byte) {
 		log.Printf("ws: unknown message type: %s", msg.Type)
 		h.broadcastToAll(raw)
 	}
+}
+
+// routeWebRTCMessage parses the target from the payload and sends directly.
+func (h *Hub) routeWebRTCMessage(msg models.Message) {
+	// The payload is JSON with a "target" field
+	var payload struct {
+		Target string `json:"target"`
+	}
+	if err := json.Unmarshal([]byte(msg.Payload), &payload); err != nil {
+		log.Printf("ws: webrtc message missing target: %v", err)
+		return
+	}
+
+	if payload.Target == "" {
+		log.Printf("ws: webrtc message has empty target")
+		return
+	}
+
+	// Re-serialize the full message for forwarding
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("ws: failed to marshal webrtc message: %v", err)
+		return
+	}
+
+	h.sendToUser(payload.Target, data)
+}
+
+// sendToUser sends a message to a specific user by username.
+func (h *Hub) sendToUser(username string, message []byte) {
+	for client := range h.clients {
+		if client.Username == username {
+			select {
+			case client.Send <- message:
+			default:
+				close(client.Send)
+				delete(h.clients, client)
+			}
+			return // Found the target, done
+		}
+	}
+	log.Printf("ws: target user not found: %s", username)
+}
+
+// broadcastUserList sends the current list of connected usernames to all clients.
+func (h *Hub) broadcastUserList() {
+	usernames := make([]string, 0, len(h.clients))
+	for client := range h.clients {
+		usernames = append(usernames, client.Username)
+	}
+
+	payload, _ := json.Marshal(usernames)
+
+	msg := models.Message{
+		Type:      models.MsgTypeUserList,
+		Sender:    "system",
+		Payload:   string(payload),
+		Timestamp: time.Now(),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("ws: failed to marshal user list: %v", err)
+		return
+	}
+
+	h.broadcastToAll(data)
 }
 
 // broadcastToAll sends a message to every connected client.
