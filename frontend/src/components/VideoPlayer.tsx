@@ -33,6 +33,7 @@ export function VideoPlayer({
     const [playing, setPlaying] = useState(currentVideoState?.playing ?? false)
     const [urlInput, setUrlInput] = useState('')
     const isRemoteAction = useRef(false)
+    const lastProgressTime = useRef(0)
 
     // --- React to remote sync events ---
     useEffect(() => {
@@ -97,10 +98,13 @@ export function VideoPlayer({
         }
     }, [url, onPause])
 
-    const handleSeek = useCallback((seconds: number) => {
-        if (!isRemoteAction.current) {
-            onSeek(url, playing, seconds)
+    // Detect seeks via progress jumps — if position changes by > 3s, it's a seek
+    const handleProgress = useCallback((state: { playedSeconds: number }) => {
+        const delta = Math.abs(state.playedSeconds - lastProgressTime.current)
+        if (delta > 3 && !isRemoteAction.current && lastProgressTime.current > 0) {
+            onSeek(url, playing, state.playedSeconds)
         }
+        lastProgressTime.current = state.playedSeconds
     }, [url, playing, onSeek])
 
     const handleLoadUrl = (e: React.FormEvent) => {
@@ -153,7 +157,8 @@ export function VideoPlayer({
                             height="100%"
                             onPlay={handlePlay}
                             onPause={handlePause}
-                            onSeek={handleSeek}
+                            onProgress={handleProgress}
+                            progressInterval={500}
                             style={{ position: 'absolute', top: 0, left: 0 }}
                         />
                     }

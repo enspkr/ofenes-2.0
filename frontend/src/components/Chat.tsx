@@ -50,13 +50,15 @@ export function Chat({ messages, onSend, readyState, currentUsername }: ChatProp
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 scrollbar-thin">
-                {messages.length === 0 && (
+                {messages.filter(m => m.type === 'chat' || m.type === 'system').length === 0 && (
                     <p className="text-center text-sm text-slate-600 py-8">
                         No messages yet. Say hello! 👋
                     </p>
                 )}
 
                 {messages.map((msg, i) => {
+                    // Only display chat and system messages — skip video_sync, admin, etc.
+                    if (msg.type !== 'chat' && msg.type !== 'system') return null
                     if (msg.type === 'system') {
                         return <SystemMessage key={i} msg={msg} />
                     }
