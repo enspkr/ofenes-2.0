@@ -22,8 +22,8 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 /**
  * AuthProvider — wraps the app and provides a SINGLE auth state to all children.
  *
- * This prevents the bug where multiple useAuth() calls create independent
- * state instances that fall out of sync.
+ * On mount, if a token exists in localStorage, it validates the token
+ * against the backend. If the token is expired or invalid, it auto-logouts.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(() => {
@@ -54,6 +54,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.removeItem(USER_KEY)
         }
     }, [user])
+
+    // --- Validate token on startup ---
+    // If we have a stored token, check it's still valid by calling /api/me.
+    // If the server returns 401 (expired/invalid), auto-logout.
+    useEffect(() => {
+        if (!token) return
+
+        fetch('/api/me', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+            .then((res) => {
+                if (res.status === 401) {
+                    // Token expired or invalid — clear stale session
+                    console.log('[auth] token expired, logging out')
+                    setToken(null)
+                    setUser(null)
+                    localStorage.removeItem(TOKEN_KEY)
+                    localStorage.removeItem(USER_KEY)
+                }
+                // If 200, token is still valid — do nothing
+            })
+            .catch(() => {
+                // Network error — keep session, user might be offline
+            })
+    }, []) // Only on mount — not on every token change
 
     const handleAuthResponse = useCallback((data: AuthResponse) => {
         setToken(data.token)
@@ -127,21 +152,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return (
         <AuthContext.Provider
-      value= {{
-        user,
-            token,
-            error,
-            loading,
-            isAuthenticated: !!token && !!user,
+            value={{
+                user,
+                token,
+                error,
+                loading,
+                isAuthenticated: !!token && !!user,
                 register,
                 login,
                 logout,
-      }
-}
-    >
-    { children }
-    </AuthContext.Provider>
-  )
+            }}
+        >
+            {children}
+        </AuthContext.Provider>
+    )
 }
 
 /**
