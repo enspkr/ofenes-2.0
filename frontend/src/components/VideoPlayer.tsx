@@ -125,7 +125,7 @@ export function VideoPlayer({
         onLoad(trimmed)
     }
 
-    const hasVideo = Boolean(url) && Player.canPlay?.(url) !== false
+    const hasVideo = Boolean(url)
 
     return (
         <div className="flex flex-col h-full">
