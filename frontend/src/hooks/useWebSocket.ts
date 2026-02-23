@@ -53,11 +53,19 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
 
         ws.onmessage = (event) => {
             if (unmounted.current) return
-            try {
-                const msg = JSON.parse(event.data as string) as Message
-                setMessages((prev) => [...prev, msg])
-            } catch (err) {
-                console.error('[ws] failed to parse message:', err)
+            // Go's writePump batches messages with \n separator in a single frame
+            const rawData = event.data as string
+            const parts = rawData.split('\n').filter(Boolean)
+            const parsed: Message[] = []
+            for (const part of parts) {
+                try {
+                    parsed.push(JSON.parse(part) as Message)
+                } catch (err) {
+                    console.error('[ws] failed to parse message part:', err)
+                }
+            }
+            if (parsed.length > 0) {
+                setMessages((prev) => [...prev, ...parsed])
             }
         }
 
