@@ -48,3 +48,18 @@ export interface AuthResponse {
 export interface ApiError {
     error: string
 }
+
+// --- Video Sync ---
+
+export interface VideoSyncPayload {
+    /** What triggered this sync event */
+    event: 'play' | 'pause' | 'seek' | 'load'
+    /** Video URL */
+    url: string
+    /** Is the video currently playing? */
+    playing: boolean
+    /** Playback position in seconds */
+    timestamp: number
+    /** Who triggered this event (to ignore own echoes) */
+    triggeredBy: string
+}

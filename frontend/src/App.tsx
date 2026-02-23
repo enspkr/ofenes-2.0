@@ -1,7 +1,9 @@
 import { useAuth } from './hooks/useAuth'
 import { useWebSocket } from './hooks/useWebSocket'
+import { useVideoSync } from './hooks/useVideoSync'
 import { Login } from './components/Login'
 import { Chat } from './components/Chat'
+import { VideoPlayer } from './components/VideoPlayer'
 
 function Dashboard() {
     const { user, token, logout } = useAuth()
@@ -10,6 +12,14 @@ function Dashboard() {
         token,
         username: user?.username ?? '',
     })
+
+    const { lastSyncEvent, currentVideoState, syncPlay, syncPause, syncSeek, syncLoad } = useVideoSync({
+        messages,
+        sendMessage,
+        username: user?.username ?? '',
+    })
+
+    const isConnected = readyState === 'open'
 
     return (
         <div className="h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col">
@@ -49,29 +59,17 @@ function Dashboard() {
                     />
                 </div>
 
-                {/* Right: Main area (future: video player, rooms) */}
-                <div className="flex-1 flex items-center justify-center">
-                    <div className="text-center space-y-4">
-                        <div className="text-6xl">🎬</div>
-                        <h2 className="text-2xl font-bold text-slate-300">Ready for video sync</h2>
-                        <p className="text-sm text-slate-500 max-w-md">
-                            This area will host the synchronized video player.
-                            Chat is live on the left — open another tab to test real-time messaging.
-                        </p>
-                        <div className="flex items-center justify-center gap-3 pt-2">
-                            {['Chat ✓', 'Auth ✓', 'WebSocket ✓', 'Video (next)'].map((item) => (
-                                <span
-                                    key={item}
-                                    className={`px-3 py-1 text-xs font-mono rounded-full border ${item.includes('next')
-                                        ? 'text-amber-400 border-amber-500/30 bg-amber-500/10'
-                                        : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
-                                        }`}
-                                >
-                                    {item}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
+                {/* Right: Video Player */}
+                <div className="flex-1 flex flex-col min-w-0">
+                    <VideoPlayer
+                        lastSyncEvent={lastSyncEvent}
+                        currentVideoState={currentVideoState}
+                        onPlay={syncPlay}
+                        onPause={syncPause}
+                        onSeek={syncSeek}
+                        onLoad={syncLoad}
+                        isConnected={isConnected}
+                    />
                 </div>
             </main>
         </div>

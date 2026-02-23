@@ -9,11 +9,17 @@ import (
 )
 
 // Hub maintains the set of active clients and routes messages.
+// It also stores the last known VideoState so new clients
+// can sync immediately on connect.
 type Hub struct {
 	clients    map[*Client]bool
 	Broadcast  chan []byte
 	Register   chan *Client
 	Unregister chan *Client
+
+	// lastVideoState stores the most recent video sync payload.
+	// Sent to new clients on connect so they join mid-stream.
+	lastVideoState []byte
 }
 
 // NewHub creates and returns a new Hub instance.
@@ -34,6 +40,14 @@ func (h *Hub) Run() {
 			h.clients[client] = true
 			log.Printf("ws: client connected (user=%s, total=%d)", client.Username, len(h.clients))
 			h.broadcastSystemMessage("user_joined", client.UserID, client.Username)
+
+			// Push the current video state to the new client
+			if h.lastVideoState != nil {
+				select {
+				case client.Send <- h.lastVideoState:
+				default:
+				}
+			}
 
 		case client := <-h.Unregister:
 			if _, ok := h.clients[client]; ok {
@@ -60,10 +74,15 @@ func (h *Hub) routeMessage(raw []byte) {
 	switch msg.Type {
 	case models.MsgTypeChat:
 		h.broadcastToAll(raw)
+
 	case models.MsgTypeVideoSync:
+		// Store latest video state for late joiners
+		h.lastVideoState = raw
 		h.broadcastToAll(raw)
+
 	case models.MsgTypeAdmin:
 		h.broadcastToAll(raw)
+
 	default:
 		log.Printf("ws: unknown message type: %s", msg.Type)
 		h.broadcastToAll(raw)
