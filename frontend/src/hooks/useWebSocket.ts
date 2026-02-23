@@ -21,12 +21,8 @@ interface UseWebSocketOptions {
  *
  * - Authenticates via JWT token in the query string
  * - Auto-reconnects with exponential backoff on disconnect
+ * - Handles React StrictMode double-mount (debounces connection)
  * - Provides typed sendMessage() and message history
- *
- * Usage:
- *   const { messages, sendMessage, readyState } = useWebSocket({
- *     token, username: user.username
- *   })
  */
 export function useWebSocket({ token, username }: UseWebSocketOptions) {
     const [messages, setMessages] = useState<Message[]>([])
@@ -35,10 +31,17 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
     const wsRef = useRef<WebSocket | null>(null)
     const retryMs = useRef(INITIAL_RETRY_MS)
     const retryTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+    const connectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
     const unmounted = useRef(false)
 
     const connect = useCallback(() => {
         if (!token || unmounted.current) return
+
+        // Close any existing connection first
+        if (wsRef.current) {
+            wsRef.current.close(1000, 'reconnecting')
+            wsRef.current = null
+        }
 
         // Build WS URL with JWT token
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -71,6 +74,7 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
 
             // Auto-reconnect with exponential backoff
             retryTimeout.current = setTimeout(() => {
+                if (unmounted.current) return
                 console.log(`[ws] reconnecting in ${retryMs.current}ms...`)
                 retryMs.current = Math.min(retryMs.current * RETRY_MULTIPLIER, MAX_RETRY_MS)
                 connect()
@@ -80,20 +84,24 @@ export function useWebSocket({ token, username }: UseWebSocketOptions) {
         ws.onerror = () => {
             if (unmounted.current) return
             setReadyState('closed')
-            // onclose will fire after onerror, triggering reconnect
         }
     }, [token])
 
-    // Connect on mount / token change
+    // Connect on mount / token change.
+    // Uses a small debounce to handle React StrictMode's double-mount:
+    //   Mount 1 → schedule connect → Cleanup → cancel → Mount 2 → schedule connect → fires once
     useEffect(() => {
         unmounted.current = false
-        connect()
+        clearTimeout(connectTimeout.current)
+        connectTimeout.current = setTimeout(connect, 50)
 
         return () => {
             unmounted.current = true
+            clearTimeout(connectTimeout.current)
             clearTimeout(retryTimeout.current)
             if (wsRef.current) {
                 wsRef.current.close(1000, 'component unmounted')
+                wsRef.current = null
             }
         }
     }, [connect])
