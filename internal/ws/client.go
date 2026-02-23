@@ -16,7 +16,7 @@ const (
 	writeWait      = 10 * time.Second
 	pongWait       = 60 * time.Second
 	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 4096
+	maxMessageSize = 65536 // 64KB — WebRTC SDP offers can be 4-8KB
 )
 
 // upgrader handles the HTTP → WebSocket protocol upgrade.
