@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import type { RemoteStream } from '../hooks/useWebRTC'
 
 interface MediaPanelProps {
@@ -18,7 +18,65 @@ interface MediaPanelProps {
     onToggleScreenShare: () => void
 }
 
-/** Video tile that auto-plays a MediaStream */
+/**
+ * useAudioLevel — measures audio level from a MediaStream using Web Audio API.
+ * Returns a 0-1 value representing current volume intensity.
+ */
+function useAudioLevel(stream: MediaStream | null): number {
+    const [level, setLevel] = useState(0)
+    const ctxRef = useRef<AudioContext | null>(null)
+    const animRef = useRef<number>(0)
+
+    useEffect(() => {
+        if (!stream) {
+            setLevel(0)
+            return
+        }
+
+        const audioTracks = stream.getAudioTracks()
+        if (audioTracks.length === 0) {
+            setLevel(0)
+            return
+        }
+
+        try {
+            const ctx = new AudioContext()
+            ctxRef.current = ctx
+            const source = ctx.createMediaStreamSource(stream)
+            const analyser = ctx.createAnalyser()
+            analyser.fftSize = 256
+            analyser.smoothingTimeConstant = 0.5
+            source.connect(analyser)
+
+            const data = new Uint8Array(analyser.frequencyBinCount)
+
+            const tick = () => {
+                analyser.getByteFrequencyData(data)
+                // Average of all frequency bins, normalized to 0-1
+                let sum = 0
+                for (let i = 0; i < data.length; i++) sum += data[i]
+                const avg = sum / data.length / 255
+                setLevel(avg)
+                animRef.current = requestAnimationFrame(tick)
+            }
+            animRef.current = requestAnimationFrame(tick)
+
+            return () => {
+                cancelAnimationFrame(animRef.current)
+                source.disconnect()
+                ctx.close()
+                ctxRef.current = null
+            }
+        } catch {
+            // AudioContext not available
+            return
+        }
+    }, [stream])
+
+    return level
+}
+
+/** Video tile that auto-plays a MediaStream with audio level indicator */
 function VideoTile({ stream, label, muted = false, mirrored = false }: {
     stream: MediaStream | null
     label: string
@@ -26,15 +84,27 @@ function VideoTile({ stream, label, muted = false, mirrored = false }: {
     mirrored?: boolean
 }) {
     const videoRef = useRef<HTMLVideoElement>(null)
+    const audioLevel = useAudioLevel(stream)
+    const isSpeaking = audioLevel > 0.05
 
     useEffect(() => {
-        if (videoRef.current && stream) {
-            videoRef.current.srcObject = stream
+        const el = videoRef.current
+        if (!el || !stream) return
+
+        el.srcObject = stream
+
+        // Explicitly play — handles browser autoplay policy
+        const playPromise = el.play()
+        if (playPromise) {
+            playPromise.catch((err) => {
+                console.warn('[media] autoplay blocked, retrying on user gesture:', err.message)
+            })
         }
     }, [stream])
 
     return (
-        <div className="relative bg-slate-900 rounded-xl overflow-hidden aspect-video">
+        <div className={`relative bg-slate-900 rounded-xl overflow-hidden aspect-video transition-all duration-200 ${isSpeaking ? 'ring-2 ring-emerald-400 shadow-lg shadow-emerald-400/20' : ''
+            }`}>
             <video
                 ref={videoRef}
                 autoPlay
@@ -42,7 +112,20 @@ function VideoTile({ stream, label, muted = false, mirrored = false }: {
                 muted={muted}
                 className={`w-full h-full object-cover ${mirrored ? 'scale-x-[-1]' : ''}`}
             />
-            <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md">
+
+            {/* Audio level bar */}
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/30">
+                <div
+                    className="h-full bg-emerald-400 transition-all duration-75"
+                    style={{ width: `${Math.min(audioLevel * 300, 100)}%` }}
+                />
+            </div>
+
+            {/* Username label */}
+            <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md flex items-center gap-1.5">
+                {isSpeaking && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                )}
                 <span className="text-xs text-white font-medium">{label}</span>
             </div>
         </div>
@@ -69,6 +152,16 @@ export function MediaPanel({
     onToggleScreenShare,
 }: MediaPanelProps) {
     const otherUsers = connectedUsers.filter((u) => u !== currentUsername)
+
+    // Resume AudioContext on first user gesture (Chrome autoplay policy)
+    const handleResumeAudio = useCallback(() => {
+        // Find all video elements and try to play them
+        document.querySelectorAll('video').forEach((v) => {
+            if (v.paused && v.srcObject) {
+                v.play().catch(() => { /* ignore */ })
+            }
+        })
+    }, [])
 
     // ─── Not in a call — show join screen ───
     if (!isInCall) {
@@ -104,7 +197,7 @@ export function MediaPanel({
             : 'grid-cols-3'
 
     return (
-        <div className="flex flex-col h-full gap-3">
+        <div className="flex flex-col h-full gap-3" onClick={handleResumeAudio}>
             {/* Video Grid */}
             <div className={`flex-1 grid ${gridCols} gap-2 auto-rows-fr`}>
                 {/* Local video */}
@@ -131,8 +224,8 @@ export function MediaPanel({
                 <button
                     onClick={onToggleMic}
                     className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${isMicOn
-                            ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                            : 'bg-red-500/80 hover:bg-red-500 text-white'
+                        ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                        : 'bg-red-500/80 hover:bg-red-500 text-white'
                         }`}
                     title={isMicOn ? 'Mute mic' : 'Unmute mic'}
                 >
@@ -143,8 +236,8 @@ export function MediaPanel({
                 <button
                     onClick={onToggleCamera}
                     className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${isCameraOn
-                            ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                            : 'bg-red-500/80 hover:bg-red-500 text-white'
+                        ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                        : 'bg-red-500/80 hover:bg-red-500 text-white'
                         }`}
                     title={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
                 >
@@ -155,8 +248,8 @@ export function MediaPanel({
                 <button
                     onClick={onToggleScreenShare}
                     className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${isScreenSharing
-                            ? 'bg-cyan-500/80 hover:bg-cyan-500 text-white'
-                            : 'bg-slate-700 hover:bg-slate-600 text-white'
+                        ? 'bg-cyan-500/80 hover:bg-cyan-500 text-white'
+                        : 'bg-slate-700 hover:bg-slate-600 text-white'
                         }`}
                     title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
                 >
