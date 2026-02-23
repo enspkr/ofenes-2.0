@@ -145,7 +145,7 @@ export function VideoPlayer({
 
             {/* Player */}
             {hasVideo ? (
-                <div className="flex-1 bg-black rounded-xl overflow-hidden relative">
+                <div className="w-full aspect-video bg-black rounded-xl overflow-hidden relative">
                     {
                         // @ts-ignore -- react-player types omit 'url' prop but it works at runtime
                         <Player
@@ -164,7 +164,7 @@ export function VideoPlayer({
                     }
                 </div>
             ) : (
-                <div className="flex-1 flex items-center justify-center bg-slate-800/30 border border-slate-700/50 rounded-xl">
+                <div className="w-full aspect-video flex items-center justify-center bg-slate-800/30 border border-slate-700/50 rounded-xl">
                     <div className="text-center space-y-3">
                         <div className="text-5xl">🎬</div>
                         <h3 className="text-lg font-semibold text-slate-300">No video loaded</h3>
