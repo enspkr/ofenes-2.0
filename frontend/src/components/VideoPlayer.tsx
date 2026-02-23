@@ -72,16 +72,24 @@ export function VideoPlayer({
         }, 300)
     }, [lastSyncEvent])
 
-    // --- Initialize from current state on mount ---
+    // --- Initialize from Hub state (for late joiners / F5 refresh) ---
+    // Watches for the first non-null currentVideoState when no local URL is set.
+    // Uses a ref to avoid re-initializing after the user has already loaded a video.
+    const initialized = useRef(false)
     useEffect(() => {
-        if (currentVideoState && !url) {
-            setUrl(currentVideoState.url)
-            setPlaying(currentVideoState.playing)
-            if (playerRef.current && currentVideoState.timestamp > 0) {
-                playerRef.current.seekTo(currentVideoState.timestamp, 'seconds')
-            }
+        if (initialized.current || !currentVideoState || url) return
+        initialized.current = true
+        setUrl(currentVideoState.url)
+        setPlaying(currentVideoState.playing)
+        // Seek after a short delay to ensure the player is ready
+        if (currentVideoState.timestamp > 0) {
+            setTimeout(() => {
+                if (playerRef.current) {
+                    playerRef.current.seekTo(currentVideoState.timestamp, 'seconds')
+                }
+            }, 1000)
         }
-    }, []) // Only on mount
+    }, [currentVideoState, url])
 
     // --- Local event handlers (broadcast to others) ---
     const handlePlay = useCallback(() => {
