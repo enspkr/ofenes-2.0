@@ -424,7 +424,12 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
                                 }
 
                                 console.log(`[webrtc] received offer from ${data.sender}`)
-                                const pc = createPeerConnection(data.sender)
+                                // Reuse existing peer connection for renegotiation,
+                                // only create a new one for the first offer
+                                let pc = peersRef.current.get(data.sender)
+                                if (!pc) {
+                                    pc = createPeerConnection(data.sender)
+                                }
                                 await pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
                                 const answer = await pc.createAnswer()
                                 await pc.setLocalDescription(answer)

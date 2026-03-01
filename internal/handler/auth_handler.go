@@ -50,6 +50,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		PasswordHash: hash,
 		Role:         models.RoleMember, // Default role
 		Status:       models.StatusOffline,
+		Preferences:  json.RawMessage(`{}`), // Default empty JSON object
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
