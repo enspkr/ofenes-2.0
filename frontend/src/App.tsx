@@ -80,6 +80,7 @@ function Dashboard() {
                         localStream={webrtc.localStream}
                         screenStream={webrtc.screenStream}
                         remoteStreams={webrtc.remoteStreams}
+                        remoteScreenAudioStreams={webrtc.remoteScreenAudioStreams}
                         isInCall={webrtc.isInCall}
                         isMicOn={webrtc.isMicOn}
                         isCameraOn={webrtc.isCameraOn}

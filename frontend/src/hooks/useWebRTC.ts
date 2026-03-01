@@ -47,6 +47,7 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
     const [localStream, setLocalStream] = useState<MediaStream | null>(null)
     const [screenStream, setScreenStream] = useState<MediaStream | null>(null)
     const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([])
+    const [remoteScreenAudioStreams, setRemoteScreenAudioStreams] = useState<RemoteStream[]>([])
     const [isInCall, setIsInCall] = useState(false)
     const [isMicOn, setIsMicOn] = useState(true)
     const [isCameraOn, setIsCameraOn] = useState(true)
@@ -57,6 +58,8 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
     const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map())
     const localStreamRef = useRef<MediaStream | null>(null)
     const screenStreamRef = useRef<MediaStream | null>(null)
+    const screenAudioSendersRef = useRef<Map<string, RTCRtpSender>>(new Map())
+    const remoteStreamIdsRef = useRef<Map<string, string>>(new Map()) // username -> primary stream id
     const isInCallRef = useRef(false)
     const usernameRef = useRef(username)
     const processedIndexRef = useRef(0)
@@ -80,7 +83,9 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
             pc.close()
             peersRef.current.delete(remoteUsername)
         }
+        remoteStreamIdsRef.current.delete(remoteUsername)
         setRemoteStreams((prev) => prev.filter((rs) => rs.username !== remoteUsername))
+        setRemoteScreenAudioStreams((prev) => prev.filter((rs) => rs.username !== remoteUsername))
     }, [])
 
     // ─── Create a new RTCPeerConnection for a remote peer ───
@@ -108,16 +113,61 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
             const [stream] = event.streams
             if (!stream) return
 
-            setRemoteStreams((prev) => {
-                // Update existing stream or add new one
-                const exists = prev.find((rs) => rs.username === remoteUsername)
-                if (exists) {
-                    return prev.map((rs) =>
+            const knownStreamId = remoteStreamIdsRef.current.get(remoteUsername)
+
+            if (!knownStreamId) {
+                // First stream from this user — this is their camera/mic stream
+                remoteStreamIdsRef.current.set(remoteUsername, stream.id)
+                setRemoteStreams((prev) => {
+                    const exists = prev.find((rs) => rs.username === remoteUsername)
+                    if (exists) {
+                        return prev.map((rs) =>
+                            rs.username === remoteUsername ? { ...rs, stream } : rs
+                        )
+                    }
+                    return [...prev, { username: remoteUsername, stream }]
+                })
+            } else if (stream.id === knownStreamId) {
+                // Same primary stream — update it
+                setRemoteStreams((prev) =>
+                    prev.map((rs) =>
                         rs.username === remoteUsername ? { ...rs, stream } : rs
                     )
-                }
-                return [...prev, { username: remoteUsername, stream }]
-            })
+                )
+            } else {
+                // Different stream — this is screen share audio
+                console.log(`[webrtc] received screen audio stream from ${remoteUsername}`)
+                setRemoteScreenAudioStreams((prev) => {
+                    const exists = prev.find((rs) => rs.username === remoteUsername)
+                    if (exists) {
+                        return prev.map((rs) =>
+                            rs.username === remoteUsername ? { ...rs, stream } : rs
+                        )
+                    }
+                    return [...prev, { username: remoteUsername, stream }]
+                })
+
+                // Clean up screen audio stream when its track ends
+                stream.getAudioTracks().forEach((track) => {
+                    track.onended = () => {
+                        setRemoteScreenAudioStreams((prev) =>
+                            prev.filter((rs) => rs.username !== remoteUsername)
+                        )
+                    }
+                })
+            }
+        }
+
+        // Handle renegotiation (triggered by addTrack/removeTrack for screen audio)
+        pc.onnegotiationneeded = async () => {
+            try {
+                console.log(`[webrtc] renegotiation needed with ${remoteUsername}`)
+                const offer = await pc.createOffer()
+                await pc.setLocalDescription(offer)
+                sendSignal('offer', remoteUsername, { sdp: pc.localDescription?.toJSON() })
+            } catch (err) {
+                console.error(`[webrtc] renegotiation failed for ${remoteUsername}:`, err)
+            }
         }
 
         // Log connection state changes
@@ -133,6 +183,22 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
             localStreamRef.current.getTracks().forEach((track) => {
                 pc.addTrack(track, localStreamRef.current!)
             })
+        }
+
+        // If screen sharing is active, replace video track and add screen audio
+        if (screenStreamRef.current) {
+            const screenVideoTrack = screenStreamRef.current.getVideoTracks()[0]
+            const screenAudioTrack = screenStreamRef.current.getAudioTracks()[0]
+
+            if (screenVideoTrack) {
+                const videoSender = pc.getSenders().find((s) => s.track?.kind === 'video')
+                if (videoSender) videoSender.replaceTrack(screenVideoTrack)
+            }
+
+            if (screenAudioTrack) {
+                const audioSender = pc.addTrack(screenAudioTrack, screenStreamRef.current)
+                screenAudioSendersRef.current.set(remoteUsername, audioSender)
+            }
         }
 
         peersRef.current.set(remoteUsername, pc)
@@ -169,10 +235,15 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
         })
         peersRef.current.clear()
 
-        // 4. Reset all state
+        // 4. Clear screen audio senders and stream ID tracking
+        screenAudioSendersRef.current.clear()
+        remoteStreamIdsRef.current.clear()
+
+        // 5. Reset all state
         setLocalStream(null)
         setScreenStream(null)
         setRemoteStreams([])
+        setRemoteScreenAudioStreams([])
         setIsInCall(false)
         setIsMicOn(true)
         setIsCameraOn(true)
@@ -244,9 +315,19 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
     }, [])
 
     // ─── Toggle Screen Share ───
-    const toggleScreenShare = useCallback(async () => {
+    const toggleScreenShare = useCallback(async (height?: number) => {
         if (isScreenSharing) {
             // Stop screen share — revert to camera
+
+            // Remove screen audio senders from all peer connections
+            screenAudioSendersRef.current.forEach((sender, peerUsername) => {
+                const pc = peersRef.current.get(peerUsername)
+                if (pc) {
+                    try { pc.removeTrack(sender) } catch { /* already removed */ }
+                }
+            })
+            screenAudioSendersRef.current.clear()
+
             if (screenStreamRef.current) {
                 screenStreamRef.current.getTracks().forEach((track) => track.stop())
                 screenStreamRef.current = null
@@ -268,12 +349,13 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
             // Start screen share
             try {
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: true,
-                    audio: false,
+                    video: height ? { height: { ideal: height } } : true,
+                    audio: true,
                 })
                 screenStreamRef.current = screenStream
 
                 const screenTrack = screenStream.getVideoTracks()[0]
+                const screenAudioTrack = screenStream.getAudioTracks()[0]
 
                 // Handle user clicking "Stop sharing" in browser UI
                 screenTrack.onended = () => {
@@ -281,9 +363,15 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
                 }
 
                 // Replace camera track with screen track in all peer connections
-                peersRef.current.forEach((pc) => {
+                // and add screen audio track if available
+                peersRef.current.forEach((pc, peerUsername) => {
                     const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
                     if (sender) sender.replaceTrack(screenTrack)
+
+                    if (screenAudioTrack) {
+                        const audioSender = pc.addTrack(screenAudioTrack, screenStream)
+                        screenAudioSendersRef.current.set(peerUsername, audioSender)
+                    }
                 })
 
                 setIsScreenSharing(true)
@@ -388,6 +476,7 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
         localStream,
         screenStream,
         remoteStreams,
+        remoteScreenAudioStreams,
         isInCall,
         isMicOn,
         isCameraOn,

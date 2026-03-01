@@ -9,8 +9,10 @@ interface VideoTileProps {
     /** 'spotlight' = large + strip, 'fullscreen' = fills entire area */
     pinMode?: 'spotlight' | 'fullscreen'
     volume?: number
+    screenAudioVolume?: number
     onPinMode?: (mode: 'spotlight' | 'fullscreen' | 'none') => void
     onVolumeChange?: (volume: number) => void
+    onScreenAudioVolumeChange?: (volume: number) => void
 }
 
 /**
@@ -77,8 +79,10 @@ export function VideoTile({
     isPinned = false,
     pinMode,
     volume = 1,
+    screenAudioVolume,
     onPinMode,
     onVolumeChange,
+    onScreenAudioVolumeChange,
 }: VideoTileProps) {
     const videoRef = useRef<HTMLVideoElement>(null)
     const [showControls, setShowControls] = useState(false)
@@ -206,24 +210,47 @@ export function VideoTile({
                     </button>
                 )}
 
-                {/* Bottom-right: Volume slider (remote users only) */}
+                {/* Bottom-right: Volume sliders (remote users only) */}
                 {!isLocal && onVolumeChange && (
-                    <div className="absolute bottom-10 right-2 flex items-center gap-1.5 bg-black/50 rounded-lg px-2 py-1">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 flex-shrink-0">
-                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                            {volume > 0 && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />}
-                            {volume > 0.5 && <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />}
-                        </svg>
-                        <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.05"
-                            value={volume}
-                            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                            className="w-20 h-1 accent-cyan-500 cursor-pointer"
-                            onClick={(e) => e.stopPropagation()}
-                        />
+                    <div className="absolute bottom-10 right-2 flex flex-col gap-1.5">
+                        {/* Screen share audio volume */}
+                        {onScreenAudioVolumeChange && screenAudioVolume !== undefined && (
+                            <div className="flex items-center gap-1.5 bg-black/50 rounded-lg px-2 py-1">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400 flex-shrink-0">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" />
+                                    <line x1="8" x2="16" y1="21" y2="21" />
+                                    <line x1="12" x2="12" y1="17" y2="21" />
+                                </svg>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    value={screenAudioVolume}
+                                    onChange={(e) => onScreenAudioVolumeChange(parseFloat(e.target.value))}
+                                    className="w-20 h-1 accent-amber-500 cursor-pointer"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            </div>
+                        )}
+                        {/* Mic volume */}
+                        <div className="flex items-center gap-1.5 bg-black/50 rounded-lg px-2 py-1">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 flex-shrink-0">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                {volume > 0 && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />}
+                                {volume > 0.5 && <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />}
+                            </svg>
+                            <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={volume}
+                                onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                                className="w-20 h-1 accent-cyan-500 cursor-pointer"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
                     </div>
                 )}
             </div>

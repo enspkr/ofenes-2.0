@@ -6,6 +6,7 @@ interface MediaPanelProps {
     localStream: MediaStream | null
     screenStream: MediaStream | null
     remoteStreams: RemoteStream[]
+    remoteScreenAudioStreams: RemoteStream[]
     isInCall: boolean
     isMicOn: boolean
     isCameraOn: boolean
@@ -18,7 +19,7 @@ interface MediaPanelProps {
     onLeaveCall: () => void
     onToggleMic: () => void
     onToggleCamera: () => void
-    onToggleScreenShare: () => void
+    onToggleScreenShare: (height?: number) => void
     onToggleChat: () => void
 }
 
@@ -29,9 +30,12 @@ interface MediaPanelProps {
 function useRemoteAudio(
     remoteStreams: RemoteStream[],
     volumes: Map<string, number>,
+    screenAudioStreams: RemoteStream[],
+    screenAudioVolumes: Map<string, number>,
 ) {
     const audioCtxRef = useRef<AudioContext | null>(null)
     const nodesRef = useRef<Map<string, { source: MediaStreamAudioSourceNode; gain: GainNode }>>(new Map())
+    const screenNodesRef = useRef<Map<string, { source: MediaStreamAudioSourceNode; gain: GainNode }>>(new Map())
 
     // Initialize AudioContext lazily
     const getCtx = useCallback(() => {
@@ -41,10 +45,10 @@ function useRemoteAudio(
         return audioCtxRef.current
     }, [])
 
+    // Mic audio routing
     useEffect(() => {
         const currentUsernames = new Set(remoteStreams.map((rs) => rs.username))
 
-        // Remove nodes for disconnected users
         nodesRef.current.forEach((nodes, username) => {
             if (!currentUsernames.has(username)) {
                 nodes.source.disconnect()
@@ -53,11 +57,9 @@ function useRemoteAudio(
             }
         })
 
-        // Create nodes for new users
         for (const rs of remoteStreams) {
             const existing = nodesRef.current.get(rs.username)
             if (existing) {
-                // Update volume
                 const vol = volumes.get(rs.username) ?? 1
                 existing.gain.gain.value = vol
                 continue
@@ -75,22 +77,62 @@ function useRemoteAudio(
                 console.error(`[audio] failed to create audio nodes for ${rs.username}:`, err)
             }
         }
+    }, [remoteStreams, volumes, getCtx])
 
+    // Screen share audio routing
+    useEffect(() => {
+        const currentUsernames = new Set(screenAudioStreams.map((rs) => rs.username))
+
+        screenNodesRef.current.forEach((nodes, username) => {
+            if (!currentUsernames.has(username)) {
+                nodes.source.disconnect()
+                nodes.gain.disconnect()
+                screenNodesRef.current.delete(username)
+            }
+        })
+
+        for (const rs of screenAudioStreams) {
+            const existing = screenNodesRef.current.get(rs.username)
+            if (existing) {
+                const vol = screenAudioVolumes.get(rs.username) ?? 1
+                existing.gain.gain.value = vol
+                continue
+            }
+
+            try {
+                const ctx = getCtx()
+                const source = ctx.createMediaStreamSource(rs.stream)
+                const gain = ctx.createGain()
+                gain.gain.value = screenAudioVolumes.get(rs.username) ?? 1
+                source.connect(gain)
+                gain.connect(ctx.destination)
+                screenNodesRef.current.set(rs.username, { source, gain })
+            } catch (err) {
+                console.error(`[audio] failed to create screen audio nodes for ${rs.username}:`, err)
+            }
+        }
+    }, [screenAudioStreams, screenAudioVolumes, getCtx])
+
+    // Cleanup on unmount
+    useEffect(() => {
         return () => {
-            // Cleanup all on unmount
             nodesRef.current.forEach((nodes) => {
                 nodes.source.disconnect()
                 nodes.gain.disconnect()
             })
             nodesRef.current.clear()
+            screenNodesRef.current.forEach((nodes) => {
+                nodes.source.disconnect()
+                nodes.gain.disconnect()
+            })
+            screenNodesRef.current.clear()
             if (audioCtxRef.current) {
                 audioCtxRef.current.close()
                 audioCtxRef.current = null
             }
         }
-    }, [remoteStreams, volumes, getCtx])
+    }, [])
 
-    // Update volume for a specific user
     const setVolume = useCallback((username: string, volume: number) => {
         const nodes = nodesRef.current.get(username)
         if (nodes) {
@@ -98,7 +140,14 @@ function useRemoteAudio(
         }
     }, [])
 
-    return { setVolume }
+    const setScreenAudioVolume = useCallback((username: string, volume: number) => {
+        const nodes = screenNodesRef.current.get(username)
+        if (nodes) {
+            nodes.gain.gain.value = volume
+        }
+    }, [])
+
+    return { setVolume, setScreenAudioVolume }
 }
 
 /**
@@ -109,6 +158,7 @@ export function MediaPanel({
     localStream,
     screenStream,
     remoteStreams,
+    remoteScreenAudioStreams,
     isInCall,
     isMicOn,
     isCameraOn,
@@ -128,11 +178,18 @@ export function MediaPanel({
     // 'none' = grid, 'spotlight' = large + strip, 'fullscreen' = pinned only
     const [pinMode, setPinMode] = useState<'none' | 'spotlight' | 'fullscreen'>('none')
     const [volumes, setVolumes] = useState<Map<string, number>>(new Map())
+    const [screenAudioVolumes, setScreenAudioVolumes] = useState<Map<string, number>>(new Map())
     const [isDeafened, setIsDeafened] = useState(false)
+    const [showQualityPicker, setShowQualityPicker] = useState(false)
 
-    const { setVolume: setAudioVolume } = useRemoteAudio(remoteStreams, volumes)
+    const { setVolume: setAudioVolume, setScreenAudioVolume } = useRemoteAudio(
+        remoteStreams, volumes, remoteScreenAudioStreams, screenAudioVolumes
+    )
 
     const otherUsers = connectedUsers.filter((u) => u !== currentUsername)
+
+    // Set of usernames who are currently sharing screen audio
+    const screenAudioUsers = new Set(remoteScreenAudioStreams.map((rs) => rs.username))
 
     const handleVolumeChange = useCallback((username: string, volume: number) => {
         setVolumes((prev) => {
@@ -143,6 +200,15 @@ export function MediaPanel({
         setAudioVolume(username, volume)
     }, [setAudioVolume])
 
+    const handleScreenAudioVolumeChange = useCallback((username: string, volume: number) => {
+        setScreenAudioVolumes((prev) => {
+            const next = new Map(prev)
+            next.set(username, volume)
+            return next
+        })
+        setScreenAudioVolume(username, volume)
+    }, [setScreenAudioVolume])
+
     const handleDeafen = useCallback(() => {
         const newDeafened = !isDeafened
         setIsDeafened(newDeafened)
@@ -150,7 +216,11 @@ export function MediaPanel({
             const vol = newDeafened ? 0 : (volumes.get(rs.username) ?? 1)
             setAudioVolume(rs.username, vol)
         })
-    }, [isDeafened, remoteStreams, volumes, setAudioVolume])
+        remoteScreenAudioStreams.forEach((rs) => {
+            const vol = newDeafened ? 0 : (screenAudioVolumes.get(rs.username) ?? 1)
+            setScreenAudioVolume(rs.username, vol)
+        })
+    }, [isDeafened, remoteStreams, remoteScreenAudioStreams, volumes, screenAudioVolumes, setAudioVolume, setScreenAudioVolume])
 
     // Pin a user with a specific mode, or unpin
     const handlePinMode = useCallback((username: string, mode: 'spotlight' | 'fullscreen' | 'none') => {
@@ -253,6 +323,8 @@ export function MediaPanel({
                             volume={pinnedTile.isLocal ? undefined : (volumes.get(pinnedTile.username) ?? 1)}
                             onPinMode={(mode) => handlePinMode(pinnedTile.username, mode)}
                             onVolumeChange={pinnedTile.isLocal ? undefined : (v) => handleVolumeChange(pinnedTile.username, v)}
+                            screenAudioVolume={!pinnedTile.isLocal && screenAudioUsers.has(pinnedTile.username) ? (screenAudioVolumes.get(pinnedTile.username) ?? 1) : undefined}
+                            onScreenAudioVolumeChange={!pinnedTile.isLocal && screenAudioUsers.has(pinnedTile.username) ? (v) => handleScreenAudioVolumeChange(pinnedTile.username, v) : undefined}
                         />
                     </div>
                 ) : pinnedUser && pinnedTile && pinMode === 'spotlight' ? (
@@ -270,6 +342,8 @@ export function MediaPanel({
                                     volume={pinnedTile.isLocal ? undefined : (volumes.get(pinnedTile.username) ?? 1)}
                                     onPinMode={(mode) => handlePinMode(pinnedTile.username, mode)}
                                     onVolumeChange={pinnedTile.isLocal ? undefined : (v) => handleVolumeChange(pinnedTile.username, v)}
+                                    screenAudioVolume={!pinnedTile.isLocal && screenAudioUsers.has(pinnedTile.username) ? (screenAudioVolumes.get(pinnedTile.username) ?? 1) : undefined}
+                                    onScreenAudioVolumeChange={!pinnedTile.isLocal && screenAudioUsers.has(pinnedTile.username) ? (v) => handleScreenAudioVolumeChange(pinnedTile.username, v) : undefined}
                                 />
                             </div>
                         </div>
@@ -285,6 +359,8 @@ export function MediaPanel({
                                             volume={tile.isLocal ? undefined : (volumes.get(tile.username) ?? 1)}
                                             onPinMode={(mode) => handlePinMode(tile.username, mode)}
                                             onVolumeChange={tile.isLocal ? undefined : (v) => handleVolumeChange(tile.username, v)}
+                                            screenAudioVolume={!tile.isLocal && screenAudioUsers.has(tile.username) ? (screenAudioVolumes.get(tile.username) ?? 1) : undefined}
+                                            onScreenAudioVolumeChange={!tile.isLocal && screenAudioUsers.has(tile.username) ? (v) => handleScreenAudioVolumeChange(tile.username, v) : undefined}
                                         />
                                     </div>
                                 ))}
@@ -304,6 +380,8 @@ export function MediaPanel({
                                 volume={tile.isLocal ? undefined : (volumes.get(tile.username) ?? 1)}
                                 onPinMode={(mode) => handlePinMode(tile.username, mode)}
                                 onVolumeChange={tile.isLocal ? undefined : (v) => handleVolumeChange(tile.username, v)}
+                                screenAudioVolume={!tile.isLocal && screenAudioUsers.has(tile.username) ? (screenAudioVolumes.get(tile.username) ?? 1) : undefined}
+                                onScreenAudioVolumeChange={!tile.isLocal && screenAudioUsers.has(tile.username) ? (v) => handleScreenAudioVolumeChange(tile.username, v) : undefined}
                             />
                         ))}
                     </div>
@@ -375,19 +453,53 @@ export function MediaPanel({
                 </ControlButton>
 
                 {/* Screen share */}
-                <ControlButton
-                    active={isScreenSharing}
-                    highlight={isScreenSharing}
-                    onClick={onToggleScreenShare}
-                    title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
-                    label="Screen"
-                >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="3" width="20" height="14" rx="2" />
-                        <line x1="8" x2="16" y1="21" y2="21" />
-                        <line x1="12" x2="12" y1="17" y2="21" />
-                    </svg>
-                </ControlButton>
+                <div className="relative">
+                    <ControlButton
+                        active={isScreenSharing}
+                        highlight={isScreenSharing}
+                        onClick={() => {
+                            if (isScreenSharing) {
+                                onToggleScreenShare()
+                            } else {
+                                setShowQualityPicker((prev) => !prev)
+                            }
+                        }}
+                        title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
+                        label="Screen"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" />
+                            <line x1="8" x2="16" y1="21" y2="21" />
+                            <line x1="12" x2="12" y1="17" y2="21" />
+                        </svg>
+                    </ControlButton>
+
+                    {/* Quality picker dropdown */}
+                    {showQualityPicker && (
+                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 rounded-lg shadow-xl overflow-hidden z-20 min-w-[160px]">
+                            <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700">
+                                Quality
+                            </div>
+                            {([
+                                { label: 'Data Saver', sub: '720p', height: 720 },
+                                { label: 'Normal', sub: '1080p (Recommended)', height: 1080 },
+                                { label: 'High Quality', sub: '1440p', height: 1440 },
+                            ] as const).map((opt) => (
+                                <button
+                                    key={opt.height}
+                                    className="w-full flex flex-col px-3 py-2 text-left hover:bg-slate-700 transition-colors"
+                                    onClick={() => {
+                                        setShowQualityPicker(false)
+                                        onToggleScreenShare(opt.height)
+                                    }}
+                                >
+                                    <span className="text-xs text-slate-200 font-medium">{opt.label}</span>
+                                    <span className="text-[10px] text-slate-500">{opt.sub}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
 
                 {/* Toggle chat */}
                 <ControlButton
