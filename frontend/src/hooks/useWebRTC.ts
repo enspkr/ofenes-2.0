@@ -45,6 +45,7 @@ interface UseWebRTCOptions {
  */
 export function useWebRTC({ messages, sendDirect, username, isConnected: _isConnected }: UseWebRTCOptions) {
     const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+    const [screenStream, setScreenStream] = useState<MediaStream | null>(null)
     const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([])
     const [isInCall, setIsInCall] = useState(false)
     const [isMicOn, setIsMicOn] = useState(true)
@@ -58,6 +59,7 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
     const screenStreamRef = useRef<MediaStream | null>(null)
     const isInCallRef = useRef(false)
     const usernameRef = useRef(username)
+    const processedIndexRef = useRef(0)
 
     usernameRef.current = username
 
@@ -71,8 +73,25 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
         }))
     }, [sendDirect])
 
+    // ─── Remove a peer connection and clean up ───
+    const removePeer = useCallback((remoteUsername: string) => {
+        const pc = peersRef.current.get(remoteUsername)
+        if (pc) {
+            pc.close()
+            peersRef.current.delete(remoteUsername)
+        }
+        setRemoteStreams((prev) => prev.filter((rs) => rs.username !== remoteUsername))
+    }, [])
+
     // ─── Create a new RTCPeerConnection for a remote peer ───
     const createPeerConnection = useCallback((remoteUsername: string): RTCPeerConnection => {
+        // Close existing peer if one exists (prevents duplicate connections)
+        const existing = peersRef.current.get(remoteUsername)
+        if (existing) {
+            existing.close()
+            peersRef.current.delete(remoteUsername)
+        }
+
         const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
 
         // Send ICE candidates to the remote peer
@@ -118,17 +137,7 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
 
         peersRef.current.set(remoteUsername, pc)
         return pc
-    }, [sendSignal])
-
-    // ─── Remove a peer connection and clean up ───
-    const removePeer = useCallback((remoteUsername: string) => {
-        const pc = peersRef.current.get(remoteUsername)
-        if (pc) {
-            pc.close()
-            peersRef.current.delete(remoteUsername)
-        }
-        setRemoteStreams((prev) => prev.filter((rs) => rs.username !== remoteUsername))
-    }, [])
+    }, [sendSignal, removePeer])
 
     // ─── FULL CLEANUP — stops all media, closes all peers ───
     const fullCleanup = useCallback(() => {
@@ -151,6 +160,7 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
             })
             screenStreamRef.current = null
         }
+        setScreenStream(null)
 
         // 3. Close every RTCPeerConnection
         peersRef.current.forEach((pc, peerUsername) => {
@@ -161,6 +171,7 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
 
         // 4. Reset all state
         setLocalStream(null)
+        setScreenStream(null)
         setRemoteStreams([])
         setIsInCall(false)
         setIsMicOn(true)
@@ -169,34 +180,43 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
         isInCallRef.current = false
     }, [])
 
-    // ─── Join Call ───
-    const joinCall = useCallback(async () => {
+    // ─── Acquire local media (used by joinCall and auto-join) ───
+    const acquireMedia = useCallback(async (): Promise<MediaStream | null> => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
                 video: true,
             })
-
             localStreamRef.current = stream
             setLocalStream(stream)
             setIsInCall(true)
             isInCallRef.current = true
-
-            // Create offers to all connected users (except ourselves)
-            const otherUsers = connectedUsers.filter((u) => u !== username)
-            for (const remoteUser of otherUsers) {
-                const pc = createPeerConnection(remoteUser)
-                const offer = await pc.createOffer()
-                await pc.setLocalDescription(offer)
-                sendSignal('offer', remoteUser, { sdp: pc.localDescription?.toJSON() })
-            }
-
-            console.log(`[webrtc] joined call, offering to ${otherUsers.length} peers`)
+            return stream
         } catch (err) {
             console.error('[webrtc] failed to get media:', err)
             fullCleanup()
+            return null
         }
-    }, [connectedUsers, username, createPeerConnection, sendSignal, fullCleanup])
+    }, [fullCleanup])
+
+    // ─── Join Call ───
+    const joinCall = useCallback(async () => {
+        const stream = await acquireMedia()
+        if (!stream) return
+
+        // Create offers to connected users we don't already have a peer for
+        const otherUsers = connectedUsers.filter(
+            (u) => u !== username && !peersRef.current.has(u)
+        )
+        for (const remoteUser of otherUsers) {
+            const pc = createPeerConnection(remoteUser)
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+            sendSignal('offer', remoteUser, { sdp: pc.localDescription?.toJSON() })
+        }
+
+        console.log(`[webrtc] joined call, offering to ${otherUsers.length} peers`)
+    }, [connectedUsers, username, createPeerConnection, sendSignal, acquireMedia])
 
     // ─── Leave Call ───
     const leaveCall = useCallback(() => {
@@ -243,6 +263,7 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
                 }
             }
             setIsScreenSharing(false)
+            setScreenStream(null)
         } else {
             // Start screen share
             try {
@@ -266,84 +287,92 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
                 })
 
                 setIsScreenSharing(true)
+                setScreenStream(screenStream)
             } catch (err) {
                 console.error('[webrtc] failed to get screen share:', err)
             }
         }
     }, [isScreenSharing])
 
-    // ─── Handle incoming WebRTC signaling messages ───
+    // ─── Process all new messages (unified handler) ───
+    // Uses a processed index ref to ensure every message is handled exactly once,
+    // even when the backend batches multiple messages in a single WebSocket frame.
     useEffect(() => {
-        if (!isInCallRef.current || messages.length === 0) return
+        if (messages.length <= processedIndexRef.current) return
 
-        const lastMsg = messages[messages.length - 1]
-        if (lastMsg.type !== 'webrtc') return
+        const newMessages = messages.slice(processedIndexRef.current)
+        processedIndexRef.current = messages.length
 
-        const handleSignal = async () => {
-            try {
-                const data = JSON.parse(lastMsg.payload)
-                if (data.target !== username) return // Not for us
+        const handleMessages = async () => {
+            for (const msg of newMessages) {
+                try {
+                    if (msg.type === 'user_list') {
+                        const users = JSON.parse(msg.payload) as string[]
+                        setConnectedUsers(users)
 
-                switch (data.event) {
-                    case 'offer': {
-                        console.log(`[webrtc] received offer from ${data.sender}`)
-                        const pc = createPeerConnection(data.sender)
-                        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
-                        const answer = await pc.createAnswer()
-                        await pc.setLocalDescription(answer)
-                        sendSignal('answer', data.sender, { sdp: pc.localDescription?.toJSON() })
-                        break
-                    }
+                        // Remove peers that are no longer connected
+                        peersRef.current.forEach((_, peerUsername) => {
+                            if (!users.includes(peerUsername)) {
+                                removePeer(peerUsername)
+                            }
+                        })
+                    } else if (msg.type === 'webrtc') {
+                        const data = JSON.parse(msg.payload)
+                        if (data.target !== usernameRef.current) continue
 
-                    case 'answer': {
-                        console.log(`[webrtc] received answer from ${data.sender}`)
-                        const pc = peersRef.current.get(data.sender)
-                        if (pc) {
-                            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
+                        switch (data.event) {
+                            case 'offer': {
+                                // Auto-join: if not in a call, acquire media first
+                                if (!isInCallRef.current) {
+                                    console.log(`[webrtc] auto-joining call (offer from ${data.sender})`)
+                                    const stream = await navigator.mediaDevices.getUserMedia({
+                                        audio: true,
+                                        video: true,
+                                    })
+                                    localStreamRef.current = stream
+                                    setLocalStream(stream)
+                                    setIsInCall(true)
+                                    isInCallRef.current = true
+                                }
+
+                                console.log(`[webrtc] received offer from ${data.sender}`)
+                                const pc = createPeerConnection(data.sender)
+                                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
+                                const answer = await pc.createAnswer()
+                                await pc.setLocalDescription(answer)
+                                sendSignal('answer', data.sender, { sdp: pc.localDescription?.toJSON() })
+                                break
+                            }
+
+                            case 'answer': {
+                                console.log(`[webrtc] received answer from ${data.sender}`)
+                                const pc = peersRef.current.get(data.sender)
+                                if (pc) {
+                                    await pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
+                                }
+                                break
+                            }
+
+                            case 'ice-candidate': {
+                                const pc = peersRef.current.get(data.sender)
+                                if (pc && data.candidate) {
+                                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
+                                }
+                                break
+                            }
                         }
-                        break
                     }
-
-                    case 'ice-candidate': {
-                        const pc = peersRef.current.get(data.sender)
-                        if (pc && data.candidate) {
-                            await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
-                        }
-                        break
-                    }
+                } catch (err) {
+                    console.error('[webrtc] message processing error:', err)
                 }
-            } catch (err) {
-                console.error('[webrtc] signaling error:', err)
             }
         }
 
-        handleSignal()
-    }, [messages, username, createPeerConnection, sendSignal])
-
-    // ─── Track connected users from user_list messages ───
-    useEffect(() => {
-        if (messages.length === 0) return
-        const lastMsg = messages[messages.length - 1]
-        if (lastMsg.type !== 'user_list') return
-
-        try {
-            const users = JSON.parse(lastMsg.payload) as string[]
-            setConnectedUsers(users)
-
-            // Remove peers that are no longer connected
-            peersRef.current.forEach((_, peerUsername) => {
-                if (!users.includes(peerUsername)) {
-                    removePeer(peerUsername)
-                }
-            })
-        } catch (err) {
-            console.error('[webrtc] failed to parse user list:', err)
-        }
-    }, [messages, removePeer])
+        handleMessages()
+    }, [messages, createPeerConnection, sendSignal, removePeer])
 
     // ─── CRITICAL: cleanup on unmount (tab close, navigation, etc.) ───
     useEffect(() => {
-        // Also handle the browser's beforeunload event
         const handleBeforeUnload = () => {
             fullCleanup()
         }
@@ -357,6 +386,7 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
 
     return {
         localStream,
+        screenStream,
         remoteStreams,
         isInCall,
         isMicOn,
