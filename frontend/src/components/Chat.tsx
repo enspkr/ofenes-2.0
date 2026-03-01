@@ -14,9 +14,6 @@ interface ChatProps {
     onWidthChange: (width: number) => void
 }
 
-/**
- * Chat — resizable chat panel with message bubbles, avatars, and input area.
- */
 export function Chat({
     messages,
     onSend,
@@ -33,7 +30,6 @@ export function Chat({
     const isConnected = readyState === 'open'
     const chatMessages = messages.filter((m) => m.type === 'chat' || m.type === 'system')
 
-    // Auto-scroll to bottom on new messages
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
@@ -46,7 +42,6 @@ export function Chat({
         setInput('')
     }
 
-    // ─── Drag-to-resize ───
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault()
         isDragging.current = true
@@ -55,7 +50,6 @@ export function Chat({
 
         const handleMouseMove = (e: MouseEvent) => {
             if (!isDragging.current) return
-            // Dragging left edge: moving left = wider, moving right = narrower
             const delta = startX - e.clientX
             const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + delta))
             onWidthChange(newWidth)
@@ -82,15 +76,24 @@ export function Chat({
         >
             {/* Drag handle */}
             <div
-                className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-cyan-500/30 active:bg-cyan-500/50 transition-colors duration-150 rounded-l"
+                className="w-1.5 flex-shrink-0 cursor-col-resize transition-colors duration-150 rounded-l"
+                style={{ backgroundColor: 'transparent' }}
                 onMouseDown={handleMouseDown}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--accent-border)')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             />
 
             {/* Chat content */}
-            <div className="flex-1 flex flex-col bg-slate-900/50 backdrop-blur-sm border border-slate-700 rounded-r-2xl overflow-hidden min-w-0">
+            <div
+                className="flex-1 flex flex-col backdrop-blur-sm rounded-r-2xl overflow-hidden min-w-0"
+                style={{ backgroundColor: 'var(--bg-overlay)', border: '1px solid var(--border)' }}
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700 bg-slate-800/50">
-                    <h2 className="text-sm font-semibold text-slate-200">Chat</h2>
+                <div
+                    className="flex items-center justify-between px-4 py-3"
+                    style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-card)' }}
+                >
+                    <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Chat</h2>
                     <div className="flex items-center gap-2">
                         <span
                             className={`w-2 h-2 rounded-full ${
@@ -99,7 +102,7 @@ export function Chat({
                                     : 'bg-red-400 shadow-sm shadow-red-400/50'
                             }`}
                         />
-                        <span className="text-[10px] font-mono text-slate-500 uppercase">
+                        <span className="text-[10px] font-mono uppercase" style={{ color: 'var(--text-tertiary)' }}>
                             {isConnected ? 'Live' : readyState}
                         </span>
                     </div>
@@ -108,7 +111,7 @@ export function Chat({
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
                     {chatMessages.length === 0 && (
-                        <p className="text-center text-sm text-slate-600 py-8">
+                        <p className="text-center text-sm py-8" style={{ color: 'var(--text-muted)' }}>
                             No messages yet. Say hello!
                         </p>
                     )}
@@ -125,7 +128,7 @@ export function Chat({
                 </div>
 
                 {/* Input area */}
-                <div className="border-t border-slate-700 bg-slate-800/30">
+                <div style={{ borderTop: '1px solid var(--border)', backgroundColor: 'var(--bg-card)' }}>
                     <form onSubmit={handleSend} className="flex items-center gap-2 px-3 py-2">
                         <input
                             type="text"
@@ -133,12 +136,23 @@ export function Chat({
                             onChange={(e) => setInput(e.target.value)}
                             disabled={!isConnected}
                             placeholder={isConnected ? 'Text here' : 'Reconnecting...'}
-                            className="min-w-0 flex-1 px-3 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-slate-200 text-sm placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all duration-200 disabled:opacity-50"
+                            className="min-w-0 flex-1 px-3 py-2 rounded-lg text-sm outline-none transition-all duration-200 disabled:opacity-50"
+                            style={{
+                                backgroundColor: 'var(--bg-input)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text-primary)',
+                            }}
+                            onFocus={(e) => { e.target.style.boxShadow = '0 0 0 1px var(--accent-ring)'; e.target.style.borderColor = 'var(--accent-ring)' }}
+                            onBlur={(e) => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = 'var(--border)' }}
                         />
                         <button
                             type="submit"
                             disabled={!isConnected || !input.trim()}
-                            className="flex-shrink-0 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="flex-shrink-0 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                            style={{
+                                backgroundColor: 'var(--accent-dark)',
+                                color: 'var(--text-on-accent)',
+                            }}
                         >
                             Send
                         </button>
@@ -146,9 +160,8 @@ export function Chat({
 
                     {/* Bottom toolbar */}
                     <div className="flex items-center gap-1 px-3 pb-2">
-                        {/* Users in chat count */}
                         <ToolbarButton title={`${connectedUsers.length} users online`}>
-                            <span className="text-[10px] font-bold text-cyan-400 mr-0.5">{connectedUsers.length}</span>
+                            <span className="text-[10px] font-bold mr-0.5" style={{ color: 'var(--accent-light)' }}>{connectedUsers.length}</span>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
                                 <circle cx="9" cy="7" r="4" />
@@ -157,7 +170,6 @@ export function Chat({
                             </svg>
                         </ToolbarButton>
 
-                        {/* Chat info */}
                         <ToolbarButton title="Chat info (coming soon)">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="12" cy="12" r="10" />
@@ -166,7 +178,6 @@ export function Chat({
                             </svg>
                         </ToolbarButton>
 
-                        {/* Emoji placeholder */}
                         <ToolbarButton title="Emoji (coming soon)">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="12" cy="12" r="10" />
@@ -176,14 +187,12 @@ export function Chat({
                             </svg>
                         </ToolbarButton>
 
-                        {/* Attach placeholder */}
                         <ToolbarButton title="Attach file (coming soon)">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                             </svg>
                         </ToolbarButton>
 
-                        {/* Help */}
                         <ToolbarButton title="Help (coming soon)">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="12" cy="12" r="10" />
@@ -198,11 +207,13 @@ export function Chat({
     )
 }
 
-/** Bottom toolbar icon button */
 function ToolbarButton({ children, title }: { children: React.ReactNode; title: string }) {
     return (
         <button
-            className="flex items-center gap-0.5 px-1.5 py-1 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors duration-150"
+            className="flex items-center gap-0.5 px-1.5 py-1 rounded transition-colors duration-150"
+            style={{ color: 'var(--text-tertiary)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.backgroundColor = 'var(--bg-overlay)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)'; e.currentTarget.style.backgroundColor = 'transparent' }}
             title={title}
             type="button"
         >
@@ -211,7 +222,6 @@ function ToolbarButton({ children, title }: { children: React.ReactNode; title: 
     )
 }
 
-/** Chat message — boxy design with square avatar */
 function ChatBubble({ msg, isOwn }: { msg: Message; isOwn: boolean }) {
     const time = new Date(msg.timestamp).toLocaleTimeString([], {
         hour: '2-digit',
@@ -219,9 +229,13 @@ function ChatBubble({ msg, isOwn }: { msg: Message; isOwn: boolean }) {
     })
 
     const avatar = (
-        <div className={`w-8 h-8 rounded flex-shrink-0 flex items-center justify-center text-xs font-bold text-white ${
-            isOwn ? 'bg-cyan-600' : 'bg-slate-600'
-        }`}>
+        <div
+            className="w-8 h-8 rounded flex-shrink-0 flex items-center justify-center text-xs font-bold"
+            style={{
+                backgroundColor: isOwn ? 'var(--accent-dark)' : 'var(--control-bg)',
+                color: 'var(--text-on-accent)',
+            }}
+        >
             {msg.sender.charAt(0).toUpperCase()}
         </div>
     )
@@ -231,15 +245,16 @@ function ChatBubble({ msg, isOwn }: { msg: Message; isOwn: boolean }) {
             {avatar}
             <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} min-w-0 flex-1`}>
                 <div className={`flex items-center gap-2 mb-0.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                    <span className="text-[11px] font-medium text-slate-400">{isOwn ? 'me' : msg.sender}</span>
-                    <span className="text-[10px] text-slate-600">{time}</span>
+                    <span className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>{isOwn ? 'me' : msg.sender}</span>
+                    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{time}</span>
                 </div>
                 <div
-                    className={`max-w-[90%] px-3 py-2 rounded text-sm break-words border ${
-                        isOwn
-                            ? 'bg-cyan-900/40 text-cyan-100 border-cyan-700/40'
-                            : 'bg-slate-800/60 text-slate-200 border-slate-700/40'
-                    }`}
+                    className="max-w-[90%] px-3 py-2 rounded text-sm break-words"
+                    style={{
+                        backgroundColor: isOwn ? 'var(--msg-own-bg)' : 'var(--msg-other-bg)',
+                        color: isOwn ? 'var(--msg-own-text)' : 'var(--msg-other-text)',
+                        border: `1px solid ${isOwn ? 'var(--msg-own-border)' : 'var(--msg-other-border)'}`,
+                    }}
                 >
                     {msg.payload}
                 </div>
@@ -248,7 +263,6 @@ function ChatBubble({ msg, isOwn }: { msg: Message; isOwn: boolean }) {
     )
 }
 
-/** System notification (join/leave) */
 function SystemMessage({ msg }: { msg: Message }) {
     let text = msg.payload
     try {
@@ -264,7 +278,10 @@ function SystemMessage({ msg }: { msg: Message }) {
 
     return (
         <div className="flex justify-center py-1">
-            <span className="text-[10px] text-slate-500 bg-slate-800/50 px-3 py-1 rounded-full">
+            <span
+                className="text-[10px] px-3 py-1 rounded-full"
+                style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-card)' }}
+            >
                 {text}
             </span>
         </div>

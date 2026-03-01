@@ -100,9 +100,10 @@ export function VideoTile({
 
     return (
         <div
-            className={`relative bg-slate-900 rounded-xl overflow-hidden transition-all duration-200 ${
+            className={`relative rounded-xl overflow-hidden transition-all duration-200 ${
                 isSpeaking ? 'ring-2 ring-emerald-400 shadow-lg shadow-emerald-400/20' : ''
             } ${isPinned ? 'h-full w-full' : 'aspect-video'}`}
+            style={{ backgroundColor: 'var(--tile-bg)' }}
             onMouseEnter={() => setShowControls(true)}
             onMouseLeave={() => setShowControls(false)}
         >
@@ -117,8 +118,11 @@ export function VideoTile({
 
             {/* No video fallback */}
             {!stream && (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
-                    <div className="w-16 h-16 rounded-full bg-slate-700 flex items-center justify-center text-2xl text-slate-400 font-bold">
+                <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'var(--bg-surface)' }}>
+                    <div
+                        className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold"
+                        style={{ backgroundColor: 'var(--control-bg)', color: 'var(--text-tertiary)' }}
+                    >
                         {label.charAt(0).toUpperCase()}
                     </div>
                 </div>
@@ -143,13 +147,13 @@ export function VideoTile({
                                     setShowPinMenu((prev) => !prev)
                                 }
                             }}
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 ${
-                                isPinned
-                                    ? pinMode === 'fullscreen'
-                                        ? 'bg-amber-500/80 text-white'
-                                        : 'bg-cyan-500/80 text-white'
-                                    : 'bg-black/40 hover:bg-black/60 text-slate-300 hover:text-white'
-                            }`}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150"
+                            style={{
+                                backgroundColor: isPinned
+                                    ? pinMode === 'fullscreen' ? 'rgba(245,158,11,0.8)' : 'var(--accent-border)'
+                                    : 'rgba(0,0,0,0.4)',
+                                color: isPinned ? 'white' : 'var(--text-secondary)',
+                            }}
                             title={isPinned ? 'Unpin' : 'Pin user'}
                         >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -160,9 +164,15 @@ export function VideoTile({
 
                         {/* Pin mode dropdown */}
                         {showPinMenu && !isPinned && (
-                            <div className="absolute top-10 right-0 bg-slate-800 border border-slate-600 rounded-lg shadow-xl overflow-hidden z-10 min-w-[140px]">
+                            <div
+                                className="absolute top-10 right-0 rounded-lg shadow-xl overflow-hidden z-10 min-w-[140px]"
+                                style={{ backgroundColor: 'var(--menu-bg)', border: '1px solid var(--menu-border)' }}
+                            >
                                 <button
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors"
+                                    style={{ color: 'var(--text-primary)' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--menu-hover)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                     onClick={(e) => {
                                         e.stopPropagation()
                                         onPinMode('spotlight')
@@ -176,7 +186,10 @@ export function VideoTile({
                                     Spotlight
                                 </button>
                                 <button
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors"
+                                    style={{ color: 'var(--text-primary)' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--menu-hover)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                     onClick={(e) => {
                                         e.stopPropagation()
                                         onPinMode('fullscreen')
@@ -199,7 +212,8 @@ export function VideoTile({
                 {/* Bottom-left: Admin controls placeholder */}
                 {!isLocal && (
                     <button
-                        className="absolute bottom-10 left-2 w-8 h-8 rounded-lg bg-black/40 hover:bg-black/60 text-slate-300 hover:text-white flex items-center justify-center transition-all duration-150"
+                        className="absolute bottom-10 left-2 w-8 h-8 rounded-lg bg-black/40 hover:bg-black/60 hover:text-white flex items-center justify-center transition-all duration-150"
+                        style={{ color: 'var(--text-secondary)' }}
                         title="Admin controls (coming soon)"
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -235,7 +249,7 @@ export function VideoTile({
                         )}
                         {/* Mic volume */}
                         <div className="flex items-center gap-1.5 bg-black/50 rounded-lg px-2 py-1">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 flex-shrink-0">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
                                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
                                 {volume > 0 && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />}
                                 {volume > 0.5 && <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />}
@@ -247,7 +261,8 @@ export function VideoTile({
                                 step="0.05"
                                 value={volume}
                                 onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                                className="w-20 h-1 accent-cyan-500 cursor-pointer"
+                                className="w-20 h-1 cursor-pointer"
+                                style={{ accentColor: 'var(--accent)' }}
                                 onClick={(e) => e.stopPropagation()}
                             />
                         </div>

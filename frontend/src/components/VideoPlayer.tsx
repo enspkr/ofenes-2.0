@@ -140,12 +140,23 @@ export function VideoPlayer({
                     onChange={(e) => setUrlInput(e.target.value)}
                     disabled={!isConnected}
                     placeholder="Paste a YouTube, Vimeo, or video URL..."
-                    className="flex-1 px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-slate-200 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all duration-200 disabled:opacity-50"
+                    className="flex-1 px-4 py-2.5 rounded-lg text-sm outline-none transition-all duration-200 disabled:opacity-50"
+                    style={{
+                        backgroundColor: 'var(--bg-input)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--text-primary)',
+                    }}
+                    onFocus={(e) => { e.target.style.boxShadow = '0 0 0 2px var(--accent-ring)'; e.target.style.borderColor = 'var(--accent-ring)' }}
+                    onBlur={(e) => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = 'var(--border)' }}
                 />
                 <button
                     type="submit"
                     disabled={!isConnected || !urlInput.trim()}
-                    className="px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-400 hover:to-purple-400 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed shadow-lg shadow-violet-500/20"
+                    className="px-5 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed shadow-lg"
+                    style={{
+                        backgroundColor: 'var(--accent)',
+                        color: 'var(--text-on-accent)',
+                    }}
                 >
                     Load
                 </button>
@@ -172,11 +183,14 @@ export function VideoPlayer({
                     }
                 </div>
             ) : (
-                <div className="w-full aspect-video flex items-center justify-center bg-slate-800/30 border border-slate-700/50 rounded-xl">
+                <div
+                    className="w-full aspect-video flex items-center justify-center rounded-xl"
+                    style={{ backgroundColor: 'var(--bg-overlay)', border: '1px solid var(--border-subtle)' }}
+                >
                     <div className="text-center space-y-3">
                         <div className="text-5xl">🎬</div>
-                        <h3 className="text-lg font-semibold text-slate-300">No video loaded</h3>
-                        <p className="text-sm text-slate-500 max-w-sm">
+                        <h3 className="text-lg font-semibold" style={{ color: 'var(--text-secondary)' }}>No video loaded</h3>
+                        <p className="text-sm max-w-sm" style={{ color: 'var(--text-muted)' }}>
                             Paste a YouTube, Vimeo, or direct video URL above.
                             Everyone connected will see it sync in real-time.
                         </p>
@@ -186,9 +200,12 @@ export function VideoPlayer({
 
             {/* Now playing bar */}
             {hasVideo && (
-                <div className="mt-3 px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg flex items-center gap-2">
-                    <span className="text-[10px] font-mono text-slate-500 uppercase">Now playing</span>
-                    <span className="text-xs text-slate-400 truncate flex-1">{url}</span>
+                <div
+                    className="mt-3 px-4 py-2 rounded-lg flex items-center gap-2"
+                    style={{ backgroundColor: 'var(--bg-overlay)', border: '1px solid var(--border)' }}
+                >
+                    <span className="text-[10px] font-mono uppercase" style={{ color: 'var(--text-muted)' }}>Now playing</span>
+                    <span className="text-xs truncate flex-1" style={{ color: 'var(--text-tertiary)' }}>{url}</span>
                     <span className={`text-xs font-mono ${playing ? 'text-emerald-400' : 'text-amber-400'}`}>
                         {playing ? '▶ Playing' : '⏸ Paused'}
                     </span>

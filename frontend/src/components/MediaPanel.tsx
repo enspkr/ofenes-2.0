@@ -245,15 +245,21 @@ export function MediaPanel({
     if (!isInCall) {
         return (
             <div className="flex flex-col h-full">
-                <div className="flex-1 flex items-center justify-center bg-slate-800/30 border border-slate-700/50 rounded-xl">
+                <div
+                    className="flex-1 flex items-center justify-center rounded-xl"
+                    style={{ backgroundColor: 'var(--bg-overlay)', border: '1px solid var(--border-subtle)' }}
+                >
                     <div className="text-center space-y-4">
-                        <div className="w-20 h-20 mx-auto rounded-full bg-slate-700/50 flex items-center justify-center">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-400">
+                        <div
+                            className="w-20 h-20 mx-auto rounded-full flex items-center justify-center"
+                            style={{ backgroundColor: 'var(--control-bg)' }}
+                        >
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-tertiary)' }}>
                                 <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                         </div>
-                        <h3 className="text-lg font-semibold text-slate-300">Voice & Video</h3>
-                        <p className="text-sm text-slate-500 max-w-sm">
+                        <h3 className="text-lg font-semibold" style={{ color: 'var(--text-secondary)' }}>Voice & Video</h3>
+                        <p className="text-sm max-w-sm" style={{ color: 'var(--text-muted)' }}>
                             Start a call to chat with voice, video, and screen sharing.
                             {otherUsers.length > 0
                                 ? ` ${otherUsers.length} other user${otherUsers.length > 1 ? 's' : ''} online.`
@@ -389,7 +395,10 @@ export function MediaPanel({
             </div>
 
             {/* Control Bar — fixed at bottom, never overlapped */}
-            <div className="flex-shrink-0 flex items-center justify-center gap-2 py-3 px-4 bg-slate-800/50 border border-slate-700 rounded-xl">
+            <div
+                className="flex-shrink-0 flex items-center justify-center gap-2 py-3 px-4 rounded-xl"
+                style={{ backgroundColor: 'var(--bg-overlay)', border: '1px solid var(--border)' }}
+            >
                 {/* Mute mic */}
                 <ControlButton
                     active={!isMicOn}
@@ -476,8 +485,14 @@ export function MediaPanel({
 
                     {/* Quality picker dropdown */}
                     {showQualityPicker && (
-                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 rounded-lg shadow-xl overflow-hidden z-20 min-w-[160px]">
-                            <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700">
+                        <div
+                            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 rounded-lg shadow-xl overflow-hidden z-20 min-w-[160px]"
+                            style={{ backgroundColor: 'var(--menu-bg)', border: '1px solid var(--menu-border)' }}
+                        >
+                            <div
+                                className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider"
+                                style={{ color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}
+                            >
                                 Quality
                             </div>
                             {([
@@ -487,14 +502,17 @@ export function MediaPanel({
                             ] as const).map((opt) => (
                                 <button
                                     key={opt.height}
-                                    className="w-full flex flex-col px-3 py-2 text-left hover:bg-slate-700 transition-colors"
+                                    className="w-full flex flex-col px-3 py-2 text-left transition-colors"
+                                    style={{ color: 'var(--text-primary)' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--menu-hover)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                     onClick={() => {
                                         setShowQualityPicker(false)
                                         onToggleScreenShare(opt.height)
                                     }}
                                 >
-                                    <span className="text-xs text-slate-200 font-medium">{opt.label}</span>
-                                    <span className="text-[10px] text-slate-500">{opt.sub}</span>
+                                    <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{opt.label}</span>
+                                    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{opt.sub}</span>
                                 </button>
                             ))}
                         </div>
@@ -514,7 +532,7 @@ export function MediaPanel({
                     </svg>
                 </ControlButton>
 
-                <div className="w-px h-8 bg-slate-700 mx-1" />
+                <div className="w-px h-8 mx-1" style={{ backgroundColor: 'var(--border)' }} />
 
                 {/* Leave call */}
                 <button
@@ -552,18 +570,18 @@ function ControlButton({
     title: string
     label: string
 }) {
-    const bg = danger
-        ? 'bg-red-500/80 hover:bg-red-500 text-white'
-        : highlight
-        ? 'bg-cyan-500/80 hover:bg-cyan-500 text-white'
-        : active
-        ? 'bg-slate-600 text-white'
-        : 'bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white'
+    const getStyle = (): React.CSSProperties => {
+        if (danger) return { backgroundColor: 'rgba(239,68,68,0.8)', color: 'white' }
+        if (highlight) return { backgroundColor: 'var(--accent-border)', color: 'white' }
+        if (active) return { backgroundColor: 'var(--control-active)', color: 'white' }
+        return { backgroundColor: 'var(--control-bg)', color: 'var(--text-secondary)' }
+    }
 
     return (
         <button
             onClick={onClick}
-            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all duration-200 ${bg}`}
+            className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all duration-200"
+            style={getStyle()}
             title={title}
         >
             {children}
