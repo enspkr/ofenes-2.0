@@ -32,13 +32,14 @@ var upgrader = websocket.Upgrader{
 
 // Client represents a single WebSocket connection.
 // Each client is associated with an authenticated user (via UserID/Username)
-// and manages two goroutines: readPump and writePump.
+// and a specific room (via RoomID). It manages two goroutines: readPump and writePump.
 type Client struct {
 	hub      *Hub
 	conn     *websocket.Conn
 	Send     chan []byte
 	UserID   string // From JWT claims
 	Username string // From JWT claims
+	RoomID   string // From "room" query param
 }
 
 // ServeWs handles the WebSocket upgrade with JWT authentication.
@@ -64,6 +65,13 @@ func ServeWs(hub *Hub, jwtSecret string, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// --- Extract room ID ---
+	roomID := r.URL.Query().Get("room")
+	if roomID == "" {
+		response.Error(w, http.StatusBadRequest, "missing room query parameter")
+		return
+	}
+
 	// --- Upgrade to WebSocket ---
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -77,6 +85,7 @@ func ServeWs(hub *Hub, jwtSecret string, w http.ResponseWriter, r *http.Request)
 		Send:     make(chan []byte, 256),
 		UserID:   claims.UserID,
 		Username: claims.Username,
+		RoomID:   roomID,
 	}
 
 	client.hub.Register <- client

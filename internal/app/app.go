@@ -14,21 +14,42 @@ import (
 	"ofenes/internal/config"
 	"ofenes/internal/repository"
 	"ofenes/internal/ws"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // App is the dependency injection container for the application.
 // All handlers and middleware receive a pointer to this struct.
 type App struct {
-	Config   *config.Config
-	UserRepo repository.UserRepository
-	Hub      *ws.Hub
+	Config      *config.Config
+	DB          *pgxpool.Pool
+	UserRepo    repository.UserRepository
+	RoomRepo    repository.RoomRepository
+	MessageRepo repository.MessageRepository
+	MediaRepo   repository.MediaSessionRepository
+	FileRepo    repository.SharedFileRepository
+	Hub         *ws.Hub
 }
 
 // New creates a new App with the given dependencies.
-func New(cfg *config.Config, userRepo repository.UserRepository, hub *ws.Hub) *App {
+func New(
+	cfg *config.Config,
+	db *pgxpool.Pool,
+	userRepo repository.UserRepository,
+	roomRepo repository.RoomRepository,
+	messageRepo repository.MessageRepository,
+	mediaRepo repository.MediaSessionRepository,
+	fileRepo repository.SharedFileRepository,
+	hub *ws.Hub,
+) *App {
 	return &App{
-		Config:   cfg,
-		UserRepo: userRepo,
-		Hub:      hub,
+		Config:      cfg,
+		DB:          db,
+		UserRepo:    userRepo,
+		RoomRepo:    roomRepo,
+		MessageRepo: messageRepo,
+		MediaRepo:   mediaRepo,
+		FileRepo:    fileRepo,
+		Hub:         hub,
 	}
 }

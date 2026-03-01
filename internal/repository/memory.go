@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 
 	"ofenes/internal/models"
 )
@@ -70,4 +72,65 @@ func (r *MemoryUserRepo) GetByUsername(_ context.Context, username string) (*mod
 		}
 	}
 	return nil, ErrNotFound
+}
+
+// Update updates a user's profile fields.
+func (r *MemoryUserRepo) Update(_ context.Context, user *models.User) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.users[user.ID]; !ok {
+		return ErrNotFound
+	}
+	user.UpdatedAt = time.Now()
+	r.users[user.ID] = user
+	return nil
+}
+
+// UpdateStatus sets a user's online status.
+func (r *MemoryUserRepo) UpdateStatus(_ context.Context, userID string, status string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	user, ok := r.users[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	user.Status = status
+	user.UpdatedAt = time.Now()
+	return nil
+}
+
+// UpdatePreferences replaces a user's preferences JSON.
+func (r *MemoryUserRepo) UpdatePreferences(_ context.Context, userID string, prefs json.RawMessage) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	user, ok := r.users[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	user.Preferences = prefs
+	user.UpdatedAt = time.Now()
+	return nil
+}
+
+// List returns a paginated list of users.
+func (r *MemoryUserRepo) List(_ context.Context, limit, offset int) ([]*models.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	all := make([]*models.User, 0, len(r.users))
+	for _, u := range r.users {
+		all = append(all, u)
+	}
+
+	if offset >= len(all) {
+		return nil, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], nil
 }

@@ -1,4 +1,12 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   backend:
     build:
       context: .
@@ -8,3 +16,8 @@ services:
       - .env.production
     ports:
       - "127.0.0.1:8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
