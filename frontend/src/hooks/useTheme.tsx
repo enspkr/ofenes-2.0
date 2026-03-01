@@ -334,7 +334,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const toggleMode = useCallback(() => {
         setState((prev) => {
             if (prev.presetName) clearPresetFromDOM()
-            const mode = prev.mode === 'dark' ? 'light' : 'dark'
+            const mode: ThemeMode = prev.mode === 'dark' ? 'light' : 'dark'
             const next = { ...prev, mode, presetName: null }
             applyModeToDOM(mode)
             applyAccentToDOM(next.accentColor)
