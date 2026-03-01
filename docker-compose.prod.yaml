@@ -1,0 +1,47 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    expose:
+      - "8080"
+    networks:
+      - app
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.prod.Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
+      - certbot-webroot:/var/www/certbot:ro
+      - certbot-certs:/etc/letsencrypt:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    depends_on:
+      - backend
+    networks:
+      - app
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot-webroot:/var/www/certbot
+      - certbot-certs:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - app
+
+volumes:
+  certbot-webroot:
+  certbot-certs:
+
+networks:
+  app:
