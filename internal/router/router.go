@@ -26,11 +26,33 @@ func New(application *app.App) http.Handler {
 
 	// --- Protected Routes (JWT required) ---
 	authMw := middleware.Auth(application.Config.JWTSecret)
-	mux.Handle("GET /api/me", authMw(http.HandlerFunc(h.Me)))
 
-	// --- WebSocket ---
+	// User
+	mux.Handle("GET /api/me", authMw(http.HandlerFunc(h.Me)))
+	mux.Handle("PUT /api/me/profile", authMw(http.HandlerFunc(h.UpdateProfile)))
+	mux.Handle("PUT /api/me/preferences", authMw(http.HandlerFunc(h.UpdatePreferences)))
+
+	// Rooms
+	mux.Handle("POST /api/rooms", authMw(http.HandlerFunc(h.CreateRoom)))
+	mux.Handle("GET /api/rooms", authMw(http.HandlerFunc(h.ListRooms)))
+	mux.Handle("GET /api/rooms/public", authMw(http.HandlerFunc(h.ListPublicRooms)))
+	mux.Handle("GET /api/rooms/{id}", authMw(http.HandlerFunc(h.GetRoom)))
+	mux.Handle("PUT /api/rooms/{id}", authMw(http.HandlerFunc(h.UpdateRoom)))
+	mux.Handle("DELETE /api/rooms/{id}", authMw(http.HandlerFunc(h.DeleteRoom)))
+	mux.Handle("POST /api/rooms/{id}/join", authMw(http.HandlerFunc(h.JoinRoom)))
+	mux.Handle("POST /api/rooms/{id}/leave", authMw(http.HandlerFunc(h.LeaveRoom)))
+	mux.Handle("GET /api/rooms/{id}/members", authMw(http.HandlerFunc(h.GetRoomMembers)))
+
+	// Messages
+	mux.Handle("GET /api/rooms/{id}/messages", authMw(http.HandlerFunc(h.GetRoomMessages)))
+
+	// Media & Files
+	mux.Handle("GET /api/rooms/{id}/media-sessions", authMw(http.HandlerFunc(h.GetRoomMediaSessions)))
+	mux.Handle("GET /api/rooms/{id}/files", authMw(http.HandlerFunc(h.GetRoomFiles)))
+
+	// --- WebSocket (JWT authenticated, room-scoped) ---
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		ws.ServeWs(application.Hub, w, r)
+		ws.ServeWs(application.Hub, application.Config.JWTSecret, w, r)
 	})
 
 	// --- Apply global middleware stack ---

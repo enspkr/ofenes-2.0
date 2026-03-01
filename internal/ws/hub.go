@@ -1,50 +1,43 @@
-// Package ws implements WebSocket connection management.
-//
-// Architecture:
-//
-//	Hub goroutine (single owner of clients map)
-//	  ┌──────────────────────────────────────────┐
-//	  │  select {                                │
-//	  │    case client := <-register:            │  ← new connection joins
-//	  │    case client := <-unregister:          │  ← connection leaves
-//	  │    case message := <-broadcast:          │  ← fan-out to all clients
-//	  │  }                                       │
-//	  └──────────────────────────────────────────┘
-//
-// The Hub is the ONLY goroutine that touches the clients map.
-// All synchronization is done through channels — no mutexes needed.
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"time"
 
 	"ofenes/internal/models"
+	"ofenes/internal/repository"
+
+	"github.com/google/uuid"
 )
 
-// Hub maintains the set of active clients and routes messages.
+// Hub maintains the set of active clients grouped by room and routes messages.
+// It also persists chat messages via the MessageRepository.
 type Hub struct {
-	// Registered clients.
-	clients map[*Client]bool
+	// clients maps roomID -> set of clients in that room.
+	clients map[string]map[*Client]bool
 
-	// Inbound messages from clients.
-	Broadcast chan []byte
-
-	// Register requests from new clients.
-	Register chan *Client
-
-	// Unregister requests from disconnecting clients.
+	Broadcast  chan []byte
+	Register   chan *Client
 	Unregister chan *Client
+
+	// lastVideoState stores the most recent video sync payload per room.
+	lastVideoState map[string][]byte
+
+	messageRepo repository.MessageRepository
 }
 
 // NewHub creates and returns a new Hub instance.
-func NewHub() *Hub {
+// The messageRepo can be nil if message persistence is not needed.
+func NewHub(messageRepo repository.MessageRepository) *Hub {
 	return &Hub{
-		Broadcast:  make(chan []byte),
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
-		clients:    make(map[*Client]bool),
+		Broadcast:      make(chan []byte),
+		Register:       make(chan *Client),
+		Unregister:     make(chan *Client),
+		clients:        make(map[string]map[*Client]bool),
+		lastVideoState: make(map[string][]byte),
+		messageRepo:    messageRepo,
 	}
 }
 
@@ -53,20 +46,10 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.Register:
-			h.clients[client] = true
-			log.Printf("ws: client connected (user=%s, total=%d)", client.UserID, len(h.clients))
-
-			// Notify all clients about the new connection
-			h.broadcastSystemMessage("user_joined", client.UserID)
+			h.addClient(client)
 
 		case client := <-h.Unregister:
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				close(client.Send)
-				log.Printf("ws: client disconnected (user=%s, total=%d)", client.UserID, len(h.clients))
-
-				h.broadcastSystemMessage("user_left", client.UserID)
-			}
+			h.removeClient(client)
 
 		case message := <-h.Broadcast:
 			h.routeMessage(message)
@@ -74,8 +57,59 @@ func (h *Hub) Run() {
 	}
 }
 
+// addClient registers a new client in its room.
+func (h *Hub) addClient(client *Client) {
+	room := client.RoomID
+	if h.clients[room] == nil {
+		h.clients[room] = make(map[*Client]bool)
+	}
+	h.clients[room][client] = true
+
+	log.Printf("ws: client connected (user=%s, room=%s, total_in_room=%d)",
+		client.Username, room, len(h.clients[room]))
+
+	h.broadcastSystemMessage(room, "user_joined", client.UserID, client.Username)
+
+	// Push the current video state to the new client
+	if state, ok := h.lastVideoState[room]; ok {
+		select {
+		case client.Send <- state:
+		default:
+		}
+	}
+
+	h.broadcastUserList(room)
+}
+
+// removeClient unregisters a client and cleans up empty rooms.
+func (h *Hub) removeClient(client *Client) {
+	room := client.RoomID
+	roomClients, ok := h.clients[room]
+	if !ok {
+		return
+	}
+
+	if _, exists := roomClients[client]; !exists {
+		return
+	}
+
+	delete(roomClients, client)
+	close(client.Send)
+
+	log.Printf("ws: client disconnected (user=%s, room=%s, total_in_room=%d)",
+		client.Username, room, len(roomClients))
+
+	h.broadcastSystemMessage(room, "user_left", client.UserID, client.Username)
+	h.broadcastUserList(room)
+
+	// Clean up empty rooms from memory
+	if len(roomClients) == 0 {
+		delete(h.clients, room)
+		delete(h.lastVideoState, room)
+	}
+}
+
 // routeMessage parses incoming JSON and routes by message type.
-// This is the typed routing layer — extend it as you add features.
 func (h *Hub) routeMessage(raw []byte) {
 	var msg models.Message
 	if err := json.Unmarshal(raw, &msg); err != nil {
@@ -83,48 +117,192 @@ func (h *Hub) routeMessage(raw []byte) {
 		return
 	}
 
+	// Find which room this sender is in.
+	room := h.findClientRoom(msg.Sender)
+	if room == "" {
+		log.Printf("ws: sender %s not found in any room", msg.Sender)
+		return
+	}
+
 	switch msg.Type {
 	case models.MsgTypeChat:
-		// Chat messages: broadcast to all clients
-		h.broadcastToAll(raw)
+		h.persistMessage(room, msg)
+		h.broadcastToRoom(room, raw)
 
 	case models.MsgTypeVideoSync:
-		// Video sync: broadcast to all clients
-		h.broadcastToAll(raw)
+		h.lastVideoState[room] = raw
+		h.broadcastToRoom(room, raw)
+
+	case models.MsgTypeWebRTC:
+		// WebRTC signaling: forward to a specific target user (cross-room)
+		h.routeWebRTCMessage(msg)
 
 	case models.MsgTypeAdmin:
-		// Admin messages: only broadcast to admins (future: check role)
-		h.broadcastToAll(raw)
+		h.broadcastToRoom(room, raw)
 
 	default:
 		log.Printf("ws: unknown message type: %s", msg.Type)
-		h.broadcastToAll(raw) // fallback: broadcast anyway
+		h.broadcastToRoom(room, raw)
 	}
 }
 
-// broadcastToAll sends a message to every connected client.
-func (h *Hub) broadcastToAll(message []byte) {
-	for client := range h.clients {
+// persistMessage saves a chat message to the database asynchronously.
+func (h *Hub) persistMessage(roomID string, msg models.Message) {
+	if h.messageRepo == nil {
+		return
+	}
+
+	// Find sender's user ID
+	senderID := h.findClientUserID(msg.Sender)
+	if senderID == "" {
+		return
+	}
+
+	chatMsg := &models.ChatMessage{
+		ID:        uuid.New().String(),
+		RoomID:    roomID,
+		SenderID:  senderID,
+		Sender:    msg.Sender,
+		Type:      msg.Type,
+		Content:   msg.Payload,
+		CreatedAt: msg.Timestamp,
+	}
+
+	// Fire and forget -- don't block the broadcast loop.
+	go func() {
+		if err := h.messageRepo.Create(context.Background(), chatMsg); err != nil {
+			log.Printf("ws: failed to persist message: %v", err)
+		}
+	}()
+}
+
+// findClientRoom returns the room ID of a client identified by username.
+func (h *Hub) findClientRoom(username string) string {
+	for roomID, roomClients := range h.clients {
+		for client := range roomClients {
+			if client.Username == username {
+				return roomID
+			}
+		}
+	}
+	return ""
+}
+
+// findClientUserID returns the user ID of a client identified by username.
+func (h *Hub) findClientUserID(username string) string {
+	for _, roomClients := range h.clients {
+		for client := range roomClients {
+			if client.Username == username {
+				return client.UserID
+			}
+		}
+	}
+	return ""
+}
+
+// routeWebRTCMessage parses the target from the payload and sends directly.
+func (h *Hub) routeWebRTCMessage(msg models.Message) {
+	var payload struct {
+		Target string `json:"target"`
+	}
+	if err := json.Unmarshal([]byte(msg.Payload), &payload); err != nil {
+		log.Printf("ws: webrtc message missing target: %v", err)
+		return
+	}
+
+	if payload.Target == "" {
+		log.Printf("ws: webrtc message has empty target")
+		return
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("ws: failed to marshal webrtc message: %v", err)
+		return
+	}
+
+	h.sendToUser(payload.Target, data)
+}
+
+// sendToUser sends a message to a specific user by username (across all rooms).
+func (h *Hub) sendToUser(username string, message []byte) {
+	for _, roomClients := range h.clients {
+		for client := range roomClients {
+			if client.Username == username {
+				select {
+				case client.Send <- message:
+				default:
+					close(client.Send)
+					delete(roomClients, client)
+				}
+				return
+			}
+		}
+	}
+	log.Printf("ws: target user not found: %s", username)
+}
+
+// broadcastUserList sends the current list of connected usernames in a room.
+func (h *Hub) broadcastUserList(roomID string) {
+	roomClients := h.clients[roomID]
+	if roomClients == nil {
+		return
+	}
+
+	usernames := make([]string, 0, len(roomClients))
+	for client := range roomClients {
+		usernames = append(usernames, client.Username)
+	}
+
+	payload, _ := json.Marshal(usernames)
+
+	msg := models.Message{
+		Type:      models.MsgTypeUserList,
+		Sender:    "system",
+		Payload:   string(payload),
+		Timestamp: time.Now(),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("ws: failed to marshal user list: %v", err)
+		return
+	}
+
+	h.broadcastToRoom(roomID, data)
+}
+
+// broadcastToRoom sends a message to every client in a specific room.
+func (h *Hub) broadcastToRoom(roomID string, message []byte) {
+	roomClients := h.clients[roomID]
+	if roomClients == nil {
+		return
+	}
+
+	for client := range roomClients {
 		select {
 		case client.Send <- message:
 		default:
 			close(client.Send)
-			delete(h.clients, client)
+			delete(roomClients, client)
 		}
 	}
 }
 
-// broadcastSystemMessage creates and sends a system message to all clients.
-func (h *Hub) broadcastSystemMessage(event, userID string) {
+// broadcastSystemMessage sends a system notification to all clients in a room.
+func (h *Hub) broadcastSystemMessage(roomID, event, userID, username string) {
+	payload, _ := json.Marshal(map[string]string{
+		"event":    event,
+		"userId":   userID,
+		"username": username,
+	})
+
 	msg := models.Message{
 		Type:      models.MsgTypeSystem,
 		Sender:    "system",
-		Payload:   event,
+		Payload:   string(payload),
 		Timestamp: time.Now(),
 	}
-
-	// Include the user ID in the payload for user_joined/user_left events
-	msg.Payload = `{"event":"` + event + `","userId":"` + userID + `"}`
 
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -132,5 +310,5 @@ func (h *Hub) broadcastSystemMessage(event, userID string) {
 		return
 	}
 
-	h.broadcastToAll(data)
+	h.broadcastToRoom(roomID, data)
 }

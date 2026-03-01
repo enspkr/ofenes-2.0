@@ -1,1 +1,88 @@
 @import "tailwindcss";
+
+/* ============================================================
+   Theme System — CSS Custom Properties
+
+   Base tokens change with [data-theme="dark"|"light"].
+   Accent tokens are set dynamically by useTheme.tsx on <html>.
+   Status colors (emerald, red, amber) are NOT themed.
+   ============================================================ */
+
+/* --- Dark Mode (default) --- */
+:root,
+[data-theme="dark"] {
+    --bg-base: #0f172a;          /* slate-900 */
+    --bg-surface: #1e293b;       /* slate-800 */
+    --bg-overlay: rgba(30, 41, 59, 0.5);
+    --bg-input: rgba(15, 23, 42, 0.5);
+    --bg-card: rgba(30, 41, 59, 0.5);
+    --border: #334155;           /* slate-700 */
+    --border-subtle: rgba(51, 65, 85, 0.5);
+    --text-primary: #e2e8f0;     /* slate-200 */
+    --text-secondary: #94a3b8;   /* slate-400 */
+    --text-tertiary: #64748b;    /* slate-500 */
+    --text-muted: #475569;       /* slate-600 */
+    --text-on-accent: #ffffff;
+    --shadow-base: rgba(0, 0, 0, 0.3);
+    --backdrop: rgba(0, 0, 0, 0.5);
+    --tile-bg: #0f172a;          /* slate-900 */
+    --tile-fallback: #1e293b;    /* slate-800 */
+    --tile-avatar: #334155;      /* slate-700 */
+    --control-bg: #334155;       /* slate-700 */
+    --control-bg-hover: #475569; /* slate-600 */
+    --control-active: #475569;   /* slate-600 */
+    --menu-bg: #1e293b;          /* slate-800 */
+    --menu-hover: #334155;       /* slate-700 */
+    --menu-border: #475569;      /* slate-600 */
+    --msg-own-bg: rgba(8, 145, 178, 0.15);
+    --msg-own-text: #cffafe;     /* cyan-100 mapped to accent */
+    --msg-own-border: rgba(14, 116, 144, 0.4);
+    --msg-other-bg: rgba(30, 41, 59, 0.6);
+    --msg-other-text: #e2e8f0;   /* slate-200 */
+    --msg-other-border: rgba(51, 65, 85, 0.4);
+}
+
+/* --- Light Mode --- */
+[data-theme="light"] {
+    --bg-base: #f8fafc;          /* slate-50 */
+    --bg-surface: #ffffff;
+    --bg-overlay: rgba(241, 245, 249, 0.8);
+    --bg-input: #ffffff;
+    --bg-card: rgba(255, 255, 255, 0.8);
+    --border: #e2e8f0;           /* slate-200 */
+    --border-subtle: rgba(226, 232, 240, 0.5);
+    --text-primary: #1e293b;     /* slate-800 */
+    --text-secondary: #64748b;   /* slate-500 */
+    --text-tertiary: #94a3b8;    /* slate-400 */
+    --text-muted: #cbd5e1;       /* slate-300 */
+    --text-on-accent: #ffffff;
+    --shadow-base: rgba(0, 0, 0, 0.08);
+    --backdrop: rgba(0, 0, 0, 0.3);
+    --tile-bg: #f1f5f9;          /* slate-100 */
+    --tile-fallback: #e2e8f0;    /* slate-200 */
+    --tile-avatar: #cbd5e1;      /* slate-300 */
+    --control-bg: #e2e8f0;       /* slate-200 */
+    --control-bg-hover: #cbd5e1; /* slate-300 */
+    --control-active: #cbd5e1;   /* slate-300 */
+    --menu-bg: #ffffff;
+    --menu-hover: #f1f5f9;       /* slate-100 */
+    --menu-border: #e2e8f0;      /* slate-200 */
+    --msg-own-bg: var(--accent-bg);
+    --msg-own-text: var(--text-primary);
+    --msg-own-border: var(--accent-border);
+    --msg-other-bg: #f1f5f9;     /* slate-100 */
+    --msg-other-text: #1e293b;   /* slate-800 */
+    --msg-other-border: rgba(226, 232, 240, 0.4);
+}
+
+/* --- Accent tokens (set dynamically by JS, defaults to cyan) --- */
+:root {
+    --accent: #06b6d4;           /* cyan-500 */
+    --accent-light: #22d3ee;     /* cyan-400 */
+    --accent-dark: #0891b2;      /* cyan-600 */
+    --accent-bg: rgba(6, 182, 212, 0.1);
+    --accent-border: rgba(6, 182, 212, 0.3);
+    --accent-ring: rgba(6, 182, 212, 0.5);
+    --accent-shadow: rgba(6, 182, 212, 0.25);
+    --accent-secondary: #818cf8; /* indigo-400, for gradient end */
+}

@@ -1,5 +1,6 @@
 # Binaries
 bin/
+draws/
 
 # Go
 *.exe
@@ -32,3 +33,4 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+.env.production

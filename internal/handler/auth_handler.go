@@ -43,12 +43,16 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- Create user ---
+	now := time.Now()
 	user := &models.User{
 		ID:           uuid.New().String(),
 		Username:     req.Username,
 		PasswordHash: hash,
 		Role:         models.RoleMember, // Default role
-		CreatedAt:    time.Now(),
+		Status:       models.StatusOffline,
+		Preferences:  json.RawMessage(`{}`), // Default empty JSON object
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	if err := h.app.UserRepo.Create(r.Context(), user); err != nil {

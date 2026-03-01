@@ -33,6 +33,10 @@ type Config struct {
 
 	// WebSocket
 	WSMaxMessageSize int64 // WS_MAX_MESSAGE_SIZE — max bytes per WS message (default: 4096)
+
+	// Database
+	DatabaseURL      string // DATABASE_URL — PostgreSQL connection string
+	DatabasePoolSize int    // DATABASE_POOL_SIZE — max pool connections (default: 10)
 }
 
 // Load reads configuration from environment variables.
@@ -43,6 +47,8 @@ func Load() (*Config, error) {
 		JWTSecret:        getEnv("JWT_SECRET", "dev-secret-change-me-in-production"),
 		AllowOrigins:     getEnv("CORS_ORIGINS", "http://localhost:5173"),
 		WSMaxMessageSize: getEnvInt64("WS_MAX_MESSAGE_SIZE", 4096),
+		DatabaseURL:      getEnv("DATABASE_URL", "postgres://ofenes:ofenes@localhost:5432/ofenes?sslmode=disable"),
+		DatabasePoolSize: getEnvInt("DATABASE_POOL_SIZE", 10),
 	}
 
 	// Parse JWT expiry
