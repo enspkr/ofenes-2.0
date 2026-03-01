@@ -97,12 +97,12 @@ function ThemePicker() {
                         >
                             {mode === 'dark' ? (
                                 <>
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
                                     Dark
                                 </>
                             ) : (
                                 <>
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></svg>
                                     Light
                                 </>
                             )}
@@ -183,7 +183,7 @@ function Dashboard() {
         <div className="h-screen flex flex-col" style={{ background: 'linear-gradient(to bottom right, var(--bg-base), var(--bg-surface), var(--bg-base))' }}>
             {/* Top bar */}
             <header
-                className="flex items-center justify-between px-5 py-2.5 backdrop-blur-sm"
+                className="relative z-50 flex items-center justify-between px-5 py-2.5 backdrop-blur-sm"
                 style={{ borderBottom: '1px solid var(--border-subtle)', backgroundColor: 'color-mix(in srgb, var(--bg-base) 80%, transparent)' }}
             >
                 {/* Left: Online users */}

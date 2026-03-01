@@ -160,6 +160,12 @@ export function useWebRTC({ messages, sendDirect, username, isConnected: _isConn
 
         // Handle renegotiation (triggered by addTrack/removeTrack for screen audio)
         pc.onnegotiationneeded = async () => {
+            // Only create offers when stable — prevents "glare" when both sides
+            // try to renegotiate simultaneously
+            if (pc.signalingState !== 'stable') {
+                console.log(`[webrtc] skipping renegotiation with ${remoteUsername} (state=${pc.signalingState})`)
+                return
+            }
             try {
                 console.log(`[webrtc] renegotiation needed with ${remoteUsername}`)
                 const offer = await pc.createOffer()
