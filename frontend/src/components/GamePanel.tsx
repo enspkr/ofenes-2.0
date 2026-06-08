@@ -61,7 +61,8 @@ function useYouTubePlayer(
         const prev = window.onYouTubeIframeAPIReady
         window.onYouTubeIframeAPIReady = () => {
             prev?.()
-            apiReadyRef.current = true
+            // Don't mark ready here — the API script is loaded, but the player
+            // instance's methods only exist after its own onReady fires below.
             if (containerRef.current && !playerRef.current) {
                 createPlayer()
             }
@@ -116,7 +117,17 @@ function useYouTubePlayer(
     // Load new video when round info changes
     useEffect(() => {
         if (!videoInfo) {
-            playerRef.current?.stopVideo()
+            // Only call player methods once the API has fired onReady — a freshly
+            // created YT.Player object exists but has no methods yet, so calling
+            // stopVideo too early throws ("stopVideo is not a function") and
+            // crashes the panel into a white page.
+            if (playerRef.current && apiReadyRef.current) {
+                try {
+                    playerRef.current.stopVideo()
+                } catch {
+                    // player may already be torn down — ignore
+                }
+            }
             return
         }
         loadVideo(videoInfo.videoId, videoInfo.startSeconds)
