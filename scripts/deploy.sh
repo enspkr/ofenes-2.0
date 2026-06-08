@@ -43,8 +43,19 @@ fi
 
 WEBROOT="/var/www/$DOMAIN"
 
+# Backend port: each domain gets its own backend container on its own port,
+# so multiple domains on the same server stay fully isolated (separate DB too).
+BACKEND_PORT="${BACKEND_PORT:-8080}"
+export BACKEND_PORT
+
+# Compose project name: derived from the domain so each domain is an independent
+# stack with its own containers, network, and database volume.
+PROJECT="ofenes-$(echo "$DOMAIN" | tr '.' '-')"
+
 echo "=== ofenes deploy: $DOMAIN ==="
 echo "App directory: $APP_DIR"
+echo "Backend port:  $BACKEND_PORT"
+echo "Compose project: $PROJECT"
 
 if [ "${JWT_SECRET:-}" = "CHANGE_ME_TO_A_RANDOM_SECRET" ] || [ -z "${JWT_SECRET:-}" ]; then
     echo "ERROR: Set a real JWT_SECRET in .env.production"
@@ -67,7 +78,7 @@ cp -r "$APP_DIR/frontend/dist/." "$WEBROOT/"
 echo ""
 echo "=== Installing Nginx config ==="
 NGINX_CONF="/etc/nginx/sites-available/$DOMAIN"
-DOMAIN="$DOMAIN" envsubst '$DOMAIN' < "$APP_DIR/nginx/site.conf.template" > "$NGINX_CONF"
+envsubst '$DOMAIN $BACKEND_PORT' < "$APP_DIR/nginx/site.conf.template" > "$NGINX_CONF"
 ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/$DOMAIN"
 
 # --- Obtain SSL certificate if not yet present ---
@@ -115,7 +126,7 @@ systemctl reload nginx
 echo ""
 echo "=== Starting backend ==="
 cd "$APP_DIR"
-docker compose -f docker-compose.prod.yaml up -d --build
+docker compose -p "$PROJECT" -f docker-compose.prod.yaml up -d --build
 
 echo ""
 echo "=== Deployment complete ==="

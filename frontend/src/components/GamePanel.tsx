@@ -63,7 +63,15 @@ function useYouTubePlayer(
 
     function createPlayer() {
         if (!containerRef.current) return
-        playerRef.current = new YT.Player(containerRef.current, {
+        // Create the player inside a child element rather than the React-managed
+        // container itself. The YouTube API replaces the element it's given with
+        // an <iframe>; if that were React's own ref'd node, React would later try
+        // to removeChild a node that no longer exists and crash the whole app
+        // (white page) on unmount. Letting YT replace a throwaway child keeps the
+        // container stable so React can unmount it cleanly.
+        const host = document.createElement('div')
+        containerRef.current.appendChild(host)
+        playerRef.current = new YT.Player(host, {
             width: 1,
             height: 1,
             playerVars: { autoplay: 1, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0 },
@@ -98,7 +106,11 @@ function useYouTubePlayer(
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            playerRef.current?.destroy()
+            try {
+                playerRef.current?.destroy()
+            } catch {
+                // YT may have already torn down the iframe — ignore
+            }
             playerRef.current = null
         }
     }, [])
@@ -558,7 +570,7 @@ function GameRound({
             </div>
 
             {/* Option cards */}
-            <div className="grid grid-cols-2 gap-3 flex-1 overflow-hidden">
+            <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 min-h-0">
                 {session.options.map((track) => (
                     <OptionCard
                         key={track.videoId}
@@ -588,7 +600,7 @@ function OptionCard({
         <button
             onClick={onClick}
             disabled={disabled}
-            className="flex flex-col rounded-xl overflow-hidden transition-all text-left"
+            className="flex flex-col rounded-xl overflow-hidden transition-all text-left min-h-0"
             style={{
                 border: selected ? '2px solid var(--accent)' : '1px solid var(--border)',
                 backgroundColor: selected ? 'var(--accent-bg)' : 'var(--bg-card)',
@@ -597,8 +609,8 @@ function OptionCard({
                 boxShadow: selected ? '0 0 0 3px var(--accent-ring)' : undefined,
             }}
         >
-            {/* Cover image */}
-            <div className="relative w-full" style={{ paddingBottom: '56.25%' /* 16:9 */ }}>
+            {/* Cover image — fills leftover space so the name block below stays visible */}
+            <div className="relative w-full flex-1 min-h-0">
                 {track.thumbnailUrl ? (
                     <img
                         src={track.thumbnailUrl}
@@ -620,8 +632,8 @@ function OptionCard({
                 )}
             </div>
 
-            {/* Info */}
-            <div className="p-2.5">
+            {/* Info — pinned, never clipped */}
+            <div className="p-2.5 flex-shrink-0">
                 <p
                     className="text-sm font-semibold leading-tight line-clamp-2"
                     style={{ color: selected ? 'var(--accent-light)' : 'var(--text-primary)' }}
