@@ -25,6 +25,7 @@ function useYouTubePlayer(
         if (playerRef.current && apiReadyRef.current) {
             playerRef.current.mute()
             playerRef.current.loadVideoById({ videoId, startSeconds })
+            playerRef.current.playVideo()
         } else {
             pendingRef.current = { videoId, startSeconds }
         }
@@ -33,8 +34,7 @@ function useYouTubePlayer(
     // Inject YouTube IFrame API script once
     useEffect(() => {
         if (window.YT) {
-            apiReadyRef.current = true
-            return
+            return // already loaded — player will be created by second effect
         }
         const existing = document.querySelector('script[src="https://www.youtube.com/iframe_api"]')
         if (!existing) {
@@ -824,7 +824,7 @@ export function GamePanel({
             {/* Hidden YouTube player — audio plays, no video visible */}
             <div
                 ref={ytContainerRef}
-                style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, overflow: 'hidden' }}
+                style={{ position: 'fixed', bottom: 0, right: 0, width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
             />
 
             {/* Game card */}

@@ -95,7 +95,7 @@ func (h *Handler) GetArtistTracks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ytURL := fmt.Sprintf(
-		"https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&channelId=%s&videoCategoryId=10&maxResults=50&order=viewCount&key=%s",
+		"https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&channelId=%s&maxResults=50&order=viewCount&key=%s",
 		url.QueryEscape(channelID), apiKey,
 	)
 
