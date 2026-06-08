@@ -600,7 +600,7 @@ function OptionCard({
         <button
             onClick={onClick}
             disabled={disabled}
-            className="flex flex-col rounded-xl overflow-hidden transition-all text-left min-h-0"
+            className="relative rounded-xl overflow-hidden transition-all text-left min-h-0"
             style={{
                 border: selected ? '2px solid var(--accent)' : '1px solid var(--border)',
                 backgroundColor: selected ? 'var(--accent-bg)' : 'var(--bg-card)',
@@ -609,38 +609,39 @@ function OptionCard({
                 boxShadow: selected ? '0 0 0 3px var(--accent-ring)' : undefined,
             }}
         >
-            {/* Cover image — fills leftover space so the name block below stays visible */}
-            <div className="relative w-full flex-1 min-h-0">
-                {track.thumbnailUrl ? (
-                    <img
-                        src={track.thumbnailUrl}
-                        alt={track.title}
-                        className="absolute inset-0 w-full h-full object-cover"
-                    />
-                ) : (
-                    <div
-                        className="absolute inset-0 flex items-center justify-center text-4xl"
-                        style={{ backgroundColor: 'var(--bg-overlay)' }}
-                    >
-                        🎵
-                    </div>
-                )}
-                {selected && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                        <span className="text-white text-2xl font-bold">✓</span>
-                    </div>
-                )}
-            </div>
-
-            {/* Info — pinned, never clipped */}
-            <div className="p-2.5 flex-shrink-0">
-                <p
-                    className="text-sm font-semibold leading-tight line-clamp-2"
-                    style={{ color: selected ? 'var(--accent-light)' : 'var(--text-primary)' }}
+            {/* Cover image fills the card; the title/artist sit on top of it */}
+            {track.thumbnailUrl ? (
+                <img
+                    src={track.thumbnailUrl}
+                    alt={track.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                />
+            ) : (
+                <div
+                    className="absolute inset-0 flex items-center justify-center text-4xl"
+                    style={{ backgroundColor: 'var(--bg-overlay)' }}
                 >
+                    🎵
+                </div>
+            )}
+
+            {selected && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                    <span className="text-white text-2xl font-bold">✓</span>
+                </div>
+            )}
+
+            {/* Info overlay — always visible at the bottom, never clipped by layout */}
+            <div
+                className="absolute inset-x-0 bottom-0 p-2.5"
+                style={{
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.4) 60%, transparent)',
+                }}
+            >
+                <p className="text-sm font-semibold leading-tight line-clamp-2 text-white">
                     {track.title}
                 </p>
-                <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
+                <p className="text-xs mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.75)' }}>
                     {track.artist}
                 </p>
             </div>

@@ -41,13 +41,11 @@ export function Chat({
         const trimmed = input.trim()
         if (!trimmed) return
 
-        if (trimmed.startsWith('/game ') || trimmed === '/game') {
+        if (trimmed.startsWith('/guessTheSong ') || trimmed === '/guessTheSong') {
             const parts = trimmed.split(/\s+/)
-            // parts[0] = "/game", parts[1] = gameName, parts[2..] = optional player list
-            if (parts[1] === 'guessTheSong') {
-                const players = parts.slice(2).filter(Boolean)
-                onGameStart(players.length > 0 ? players : undefined)
-            }
+            // parts[0] = "/guessTheSong", parts[1..] = optional player list
+            const players = parts.slice(1).filter(Boolean)
+            onGameStart(players.length > 0 ? players : undefined)
             setInput('')
             return
         }
