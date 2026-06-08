@@ -11,15 +11,30 @@ interface GamePanelProps {
     game: UseGameReturn
 }
 
+const VOLUME_STORAGE_KEY = 'guessTheSong.volume'
+const DEFAULT_VOLUME = 70 // 0-100
+
+function loadStoredVolume(): number {
+    const raw = localStorage.getItem(VOLUME_STORAGE_KEY)
+    if (raw === null) return DEFAULT_VOLUME
+    const parsed = Number(raw)
+    if (Number.isNaN(parsed)) return DEFAULT_VOLUME
+    return Math.min(100, Math.max(0, parsed))
+}
+
 // ─── YouTube player ──────────────────────────────────────────────────────────
 
 function useYouTubePlayer(
     containerRef: React.RefObject<HTMLDivElement | null>,
-    videoInfo: { videoId: string; startSeconds: number } | null
+    videoInfo: { videoId: string; startSeconds: number } | null,
+    volume: number
 ) {
     const playerRef = useRef<YT.Player | null>(null)
     const apiReadyRef = useRef(false)
     const pendingRef = useRef<{ videoId: string; startSeconds: number } | null>(null)
+    // Keep the latest volume in a ref so player event callbacks (created once)
+    // always read the current value rather than a stale closure.
+    const volumeRef = useRef(volume)
 
     const loadVideo = useCallback((videoId: string, startSeconds: number) => {
         if (playerRef.current && apiReadyRef.current) {
@@ -86,8 +101,12 @@ function useYouTubePlayer(
                 },
                 onStateChange: (event) => {
                     if (event.data === 1 /* PLAYING */) {
-                        event.target.unMute()
-                        event.target.setVolume(100)
+                        event.target.setVolume(volumeRef.current)
+                        if (volumeRef.current > 0) {
+                            event.target.unMute()
+                        } else {
+                            event.target.mute()
+                        }
                     }
                 },
             },
@@ -102,6 +121,19 @@ function useYouTubePlayer(
         }
         loadVideo(videoInfo.videoId, videoInfo.startSeconds)
     }, [videoInfo?.videoId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Apply volume changes live while a song is playing
+    useEffect(() => {
+        volumeRef.current = volume
+        if (playerRef.current && apiReadyRef.current) {
+            playerRef.current.setVolume(volume)
+            if (volume > 0) {
+                playerRef.current.unMute()
+            } else {
+                playerRef.current.mute()
+            }
+        }
+    }, [volume])
 
     // Cleanup on unmount
     useEffect(() => {
@@ -812,6 +844,34 @@ function GameScoreboard({
     )
 }
 
+// ─── Volume control ───────────────────────────────────────────────────────────
+
+function VolumeControl({ volume, onChange }: { volume: number; onChange: (v: number) => void }) {
+    const icon = volume === 0 ? '🔇' : volume < 50 ? '🔉' : '🔊'
+    return (
+        <div className="flex items-center gap-1.5" title="Volume">
+            <button
+                onClick={() => onChange(volume === 0 ? DEFAULT_VOLUME : 0)}
+                className="text-base leading-none"
+                style={{ background: 'none' }}
+                aria-label={volume === 0 ? 'Unmute' : 'Mute'}
+            >
+                {icon}
+            </button>
+            <input
+                type="range"
+                min={0}
+                max={100}
+                value={volume}
+                onChange={(e) => onChange(Number(e.target.value))}
+                className="w-20 cursor-pointer"
+                style={{ accentColor: 'var(--accent)' }}
+                aria-label="Volume"
+            />
+        </div>
+    )
+}
+
 // ─── GamePanel (root) ─────────────────────────────────────────────────────────
 
 export function GamePanel({
@@ -824,8 +884,13 @@ export function GamePanel({
 }: GamePanelProps) {
     const isHost = session.host === currentUsername
     const ytContainerRef = useRef<HTMLDivElement>(null)
+    const [volume, setVolume] = useState(loadStoredVolume)
 
-    useYouTubePlayer(ytContainerRef, currentRound ?? null)
+    useEffect(() => {
+        localStorage.setItem(VOLUME_STORAGE_KEY, String(volume))
+    }, [volume])
+
+    useYouTubePlayer(ytContainerRef, currentRound ?? null, volume)
 
     const isLobby = ['lobby', 'mode_select', 'artist_select', 'genre_select'].includes(session.status)
 
@@ -877,15 +942,18 @@ export function GamePanel({
                             </span>
                         )}
                     </div>
-                    <button
-                        onClick={game.leaveGame}
-                        className="text-xs px-2.5 py-1 rounded-lg transition-colors"
-                        style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-overlay)' }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = '#f87171')}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-tertiary)')}
-                    >
-                        Leave
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <VolumeControl volume={volume} onChange={setVolume} />
+                        <button
+                            onClick={game.leaveGame}
+                            className="text-xs px-2.5 py-1 rounded-lg transition-colors"
+                            style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-overlay)' }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#f87171')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-tertiary)')}
+                        >
+                            Leave
+                        </button>
+                    </div>
                 </div>
 
                 {/* Body */}
