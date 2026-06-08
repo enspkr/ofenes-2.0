@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name dev.ofenes.com;
+    server_name ${DOMAIN};
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -13,10 +13,10 @@ server {
 
 server {
     listen 443 ssl;
-    server_name dev.ofenes.com;
+    server_name ${DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/dev.ofenes.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/dev.ofenes.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
@@ -24,7 +24,7 @@ server {
     ssl_session_cache shared:SSL:10m;
 
     # Frontend static files
-    root /var/www/dev.ofenes.com;
+    root /var/www/${DOMAIN};
     index index.html;
 
     location / {
