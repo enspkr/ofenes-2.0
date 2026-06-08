@@ -67,7 +67,7 @@ cp -r "$APP_DIR/frontend/dist/." "$WEBROOT/"
 echo ""
 echo "=== Installing Nginx config ==="
 NGINX_CONF="/etc/nginx/sites-available/$DOMAIN"
-envsubst '$DOMAIN' < "$APP_DIR/nginx/site.conf.template" > "$NGINX_CONF"
+DOMAIN="$DOMAIN" envsubst '$DOMAIN' < "$APP_DIR/nginx/site.conf.template" > "$NGINX_CONF"
 ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/$DOMAIN"
 
 # --- Obtain SSL certificate if not yet present ---
