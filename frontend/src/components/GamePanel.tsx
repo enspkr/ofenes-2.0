@@ -23,7 +23,10 @@ function useYouTubePlayer(
 
     const loadVideo = useCallback((videoId: string, startSeconds: number) => {
         if (playerRef.current && apiReadyRef.current) {
+            playerRef.current.unMute()
+            playerRef.current.setVolume(100)
             playerRef.current.loadVideoById({ videoId, startSeconds })
+            playerRef.current.playVideo()
         } else {
             pendingRef.current = { videoId, startSeconds }
         }
@@ -67,10 +70,13 @@ function useYouTubePlayer(
             height: 1,
             playerVars: { autoplay: 1, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0 },
             events: {
-                onReady: () => {
+                onReady: (event) => {
                     apiReadyRef.current = true
+                    event.target.unMute()
+                    event.target.setVolume(100)
                     if (pendingRef.current) {
-                        playerRef.current?.loadVideoById(pendingRef.current)
+                        event.target.loadVideoById(pendingRef.current)
+                        event.target.playVideo()
                         pendingRef.current = null
                     }
                 },

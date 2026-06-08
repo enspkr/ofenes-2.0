@@ -197,8 +197,8 @@ export function useGame({ messages, sendMessage, token }: UseGameOptions): UseGa
         setMyAnswer(null)
         setRoundResult(null)
         setCurrentRound(null)
-        processedCount.current = 0
-    }, [send])
+        processedCount.current = messages.filter((m) => m.type === 'game').length
+    }, [send, messages])
 
     // --- YouTube proxy API calls ---
 
