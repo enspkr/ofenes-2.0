@@ -51,7 +51,11 @@ export function useGame({ messages, sendMessage, token }: UseGameOptions): UseGa
     } | null>(null)
 
     const processedCount = useRef(0)
-    const leftSessionId = useRef<string | null>(null)
+    // Sessions this client has left. Stale game_state broadcasts for these ids
+    // (e.g. the broadcast triggered by our own game_leave) may arrive after we
+    // start a new game, and must never be applied. New sessions always get a
+    // fresh UUID, so they are never in this set.
+    const leftSessionIds = useRef<Set<string>>(new Set())
 
     useEffect(() => {
         const gameMsgs = messages.filter((m) => m.type === 'game')
@@ -74,8 +78,7 @@ export function useGame({ messages, sendMessage, token }: UseGameOptions): UseGa
         switch (payload.action) {
             case 'game_state': {
                 const s = payload.session as GameSession
-                if (leftSessionId.current && leftSessionId.current === s.id) break
-                leftSessionId.current = null
+                if (leftSessionIds.current.has(s.id)) break
                 setSession(s)
                 // Reset per-round state when status changes to a non-active state
                 if (s.status !== 'round_active' && s.status !== 'round_result') {
@@ -146,7 +149,6 @@ export function useGame({ messages, sendMessage, token }: UseGameOptions): UseGa
 
     const startGame = useCallback(
         (players?: string[]) => {
-            leftSessionId.current = null
             setMyAnswer(null)
             setRoundResult(null)
             setCurrentRound(null)
@@ -195,7 +197,7 @@ export function useGame({ messages, sendMessage, token }: UseGameOptions): UseGa
     )
 
     const leaveGame = useCallback(() => {
-        leftSessionId.current = session?.id ?? null
+        if (session?.id) leftSessionIds.current.add(session.id)
         send('game_leave')
         setSession(null)
         setMyAnswer(null)
