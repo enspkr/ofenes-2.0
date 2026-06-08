@@ -50,8 +50,8 @@ export function useGame({ messages, sendMessage, token }: UseGameOptions): UseGa
         durationMs: number
     } | null>(null)
 
-    // Track which message indices we've processed to avoid reprocessing
     const processedCount = useRef(0)
+    const leftSessionId = useRef<string | null>(null)
 
     useEffect(() => {
         const gameMsgs = messages.filter((m) => m.type === 'game')
@@ -74,6 +74,8 @@ export function useGame({ messages, sendMessage, token }: UseGameOptions): UseGa
         switch (payload.action) {
             case 'game_state': {
                 const s = payload.session as GameSession
+                if (leftSessionId.current && leftSessionId.current === s.id) break
+                leftSessionId.current = null
                 setSession(s)
                 // Reset per-round state when status changes to a non-active state
                 if (s.status !== 'round_active' && s.status !== 'round_result') {
@@ -144,6 +146,7 @@ export function useGame({ messages, sendMessage, token }: UseGameOptions): UseGa
 
     const startGame = useCallback(
         (players?: string[]) => {
+            leftSessionId.current = null
             setMyAnswer(null)
             setRoundResult(null)
             setCurrentRound(null)
@@ -192,13 +195,14 @@ export function useGame({ messages, sendMessage, token }: UseGameOptions): UseGa
     )
 
     const leaveGame = useCallback(() => {
+        leftSessionId.current = session?.id ?? null
         send('game_leave')
         setSession(null)
         setMyAnswer(null)
         setRoundResult(null)
         setCurrentRound(null)
         processedCount.current = messages.filter((m) => m.type === 'game').length
-    }, [send, messages])
+    }, [send, messages, session])
 
     // --- YouTube proxy API calls ---
 
