@@ -1,0 +1,43 @@
+# Binaries
+bin/
+draws/
+server
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Claude Code
+.claude/
+
+# Go tarballs / pre-downloaded binaries
+*.tar.gz
