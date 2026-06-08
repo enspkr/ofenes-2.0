@@ -5,9 +5,16 @@ declare namespace YT {
     class Player {
         constructor(elementIdOrElement: string | HTMLElement, options: PlayerOptions)
         loadVideoById(options: { videoId: string; startSeconds?: number }): void
+        playVideo(): void
         stopVideo(): void
+        pauseVideo(): void
         destroy(): void
         getPlayerState(): number
+        mute(): void
+        unMute(): void
+        isMuted(): boolean
+        setVolume(volume: number): void
+        getVolume(): number
     }
 
     interface PlayerOptions {
